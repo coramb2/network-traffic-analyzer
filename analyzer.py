@@ -154,6 +154,9 @@ class PacketAnalyzer:
             'recent_packets': self.packets[-100:]  # Last 100 packets
         }
         
+        if ".." in filename:
+            raise Exception("Invalid file path")
+        
         with open(filename, 'w') as f:
             json.dump(output, f, indent=2)
         
