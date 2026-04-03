@@ -112,6 +112,8 @@ class TrafficReporter:
         
         fieldnames = ['timestamp', 'src_ip', 'dst_ip', 'protocol', 'src_port', 'dst_port', 'size']
         
+        if '..' in filename:
+            raise Exception('Invalid file path')
         with open(filename, 'w', newline='') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames, extrasaction='ignore')
             writer.writeheader()
@@ -348,6 +350,8 @@ class TrafficReporter:
 </html>
 """
         
+        if '..' in filename:
+            raise Exception('Invalid file path')
         with open(filename, 'w') as f:
             f.write(html_content)
         

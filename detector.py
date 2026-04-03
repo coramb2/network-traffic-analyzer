@@ -192,6 +192,8 @@ class AnomalyDetector:
     
     def export_alerts(self, filename='security_alerts.json'):
         """Export alerts to JSON file"""
+        if '..' in filename:
+            raise Exception('Invalid file path')
         with open(filename, 'w') as f:
             json.dump({
                 'generated_at': datetime.now().isoformat(),
