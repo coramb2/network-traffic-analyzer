@@ -105,7 +105,8 @@ class AnomalyDetector:
                 'details': f'Connection to port {dst_port} ({suspicious_ports[dst_port]})'
             }
             alerts.append(alert)
-        
+            self.alerts.append(alert)
+
         # Large Packet Detection (potential data exfiltration)
         if packet_info.get('size', 0) > 1400:  # Close to MTU size
             if protocol == 'UDP':
@@ -118,7 +119,8 @@ class AnomalyDetector:
                     'details': f'Packet size: {packet_info["size"]} bytes'
                 }
                 alerts.append(alert)
-        
+                self.alerts.append(alert)
+
         return alerts
     
     def analyze_traffic_patterns(self, packets):
