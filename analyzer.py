@@ -164,7 +164,32 @@ class PacketAnalyzer:
         os.chmod(resolved_path, 0o600)
 
         console.print(f"\n[green]✓[/green] Analysis exported to {filename}")
-    
+
+    def export_live_snapshot(self, filename='live_status.json'):
+        """Write a lightweight snapshot of in-progress stats for a dashboard to poll.
+
+        Cheaper than export_to_json: no packet history, just the running
+        counters, so it's safe to call every second or so during capture.
+        """
+        runtime = (datetime.now() - self.start_time).seconds
+        snapshot = {
+            'status': 'running',
+            'updated_at': datetime.now().isoformat(),
+            'capture_start': self.start_time.isoformat(),
+            'interface': self.interface or 'default',
+            'runtime_seconds': runtime,
+            'packet_count': self.packet_count,
+            'packets_per_second': round(self.packet_count / max(runtime, 1), 2),
+            'protocol_stats': dict(self.protocol_stats),
+            'top_ips': sorted(self.ip_stats.items(), key=lambda x: x[1], reverse=True)[:10],
+            'top_ports': sorted(self.port_stats.items(), key=lambda x: x[1], reverse=True)[:10],
+        }
+
+        resolved_path = safe_output_path(filename)
+        with open(resolved_path, 'w') as f:
+            json.dump(snapshot, f, indent=2)
+        os.chmod(resolved_path, 0o600)
+
     def start_capture(self, packet_count=0, timeout=None, filter_str=None):
         """Start capturing packets"""
         console.print(f"[bold cyan]Starting packet capture...[/bold cyan]")
@@ -189,10 +214,19 @@ class PacketAnalyzer:
             
             # Live display update
             with Live(self.generate_display_table(), refresh_per_second=2) as live:
+                last_snapshot = 0
                 while capture_thread.is_alive():
                     time.sleep(0.5)
                     live.update(self.generate_display_table())
-                    
+
+                    now = time.monotonic()
+                    if now - last_snapshot >= 1:
+                        try:
+                            self.export_live_snapshot()
+                        except OSError as e:
+                            console.print(f"[yellow]Warning: couldn't write live snapshot: {e}[/yellow]")
+                        last_snapshot = now
+
         except KeyboardInterrupt:
             console.print("\n[yellow]Capture interrupted by user[/yellow]")
         except PermissionError:
