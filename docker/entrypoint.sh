@@ -35,7 +35,15 @@ while true; do
         echo "[$(date -u +%FT%TZ)] capture run $run_id failed" >&2
     fi
 
-    ln -sfn "$run_dir" "$REPORTS_ROOT/latest"
+    # A quiet interval (no packets captured) leaves run_dir empty, since
+    # network_monitor.py skips writing reports when nothing was captured.
+    # Don't repoint "latest" at an empty directory in that case.
+    if [ -f "$run_dir/traffic_analysis.json" ]; then
+        ln -sfn "$run_dir" "$REPORTS_ROOT/latest"
+    else
+        echo "[$(date -u +%FT%TZ)] run $run_id captured no packets; leaving 'latest' unchanged"
+        rmdir "$run_dir" 2>/dev/null || true
+    fi
 
     mapfile -t old_runs < <(
         find "$REPORTS_ROOT" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
