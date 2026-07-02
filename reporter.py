@@ -10,6 +10,8 @@ from datetime import datetime
 from collections import Counter
 import os
 
+from paths import safe_output_path
+
 class TrafficReporter:
     def __init__(self, analyzer_data, detector_data=None):
         """
@@ -111,18 +113,18 @@ class TrafficReporter:
             return None
         
         fieldnames = ['timestamp', 'src_ip', 'dst_ip', 'protocol', 'src_port', 'dst_port', 'size']
-        
-        if '..' in filename:
-            raise Exception('Invalid file path')
-        with open(filename, 'w', newline='') as csvfile:
+
+        resolved_path = safe_output_path(filename)
+        with open(resolved_path, 'w', newline='') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames, extrasaction='ignore')
             writer.writeheader()
-            
+
             for packet in packets:
                 writer.writerow(packet)
-        
+        os.chmod(resolved_path, 0o600)
+
         return filename
-    
+
     def export_to_json(self, filename='full_report.json'):
         """Export complete analysis to JSON"""
         full_report = {
@@ -133,10 +135,12 @@ class TrafficReporter:
             'traffic_analysis': self.analyzer_data,
             'security_analysis': self.detector_data
         }
-        
-        with open(filename, 'w') as f:
+
+        resolved_path = safe_output_path(filename)
+        with open(resolved_path, 'w') as f:
             json.dump(full_report, f, indent=2)
-        
+        os.chmod(resolved_path, 0o600)
+
         return filename
     
     def generate_html_report(self, filename='report.html'):
@@ -350,11 +354,11 @@ class TrafficReporter:
 </html>
 """
         
-        if '..' in filename:
-            raise Exception('Invalid file path')
-        with open(filename, 'w') as f:
+        resolved_path = safe_output_path(filename)
+        with open(resolved_path, 'w') as f:
             f.write(html_content)
-        
+        os.chmod(resolved_path, 0o600)
+
         return filename
 
 

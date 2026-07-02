@@ -9,13 +9,16 @@ from scapy.layers import http
 from collections import defaultdict
 from datetime import datetime
 import json
-from rich.console import Console
+import os
+from rich.console import Console, Group
 from rich.table import Table
 from rich.live import Live
 from rich.layout import Layout
 from rich.panel import Panel
 import threading
 import time
+
+from paths import safe_output_path
 
 console = Console()
 
@@ -137,7 +140,7 @@ class PacketAnalyzer:
             top_ports_table.add_row(str(port), service, str(count))
         
         return Panel.fit(
-            f"{stats_table}\n\n{protocol_table}\n\n{top_ips_table}\n\n{top_ports_table}",
+            Group(stats_table, protocol_table, top_ips_table, top_ports_table),
             title="[bold cyan]Network Traffic Analyzer[/bold cyan]",
             border_style="blue"
         )
@@ -154,12 +157,12 @@ class PacketAnalyzer:
             'recent_packets': self.packets[-100:]  # Last 100 packets
         }
         
-        if ".." in filename:
-            raise Exception("Invalid file path")
-        
-        with open(filename, 'w') as f:
+        resolved_path = safe_output_path(filename)
+
+        with open(resolved_path, 'w') as f:
             json.dump(output, f, indent=2)
-        
+        os.chmod(resolved_path, 0o600)
+
         console.print(f"\n[green]✓[/green] Analysis exported to {filename}")
     
     def start_capture(self, packet_count=0, timeout=None, filter_str=None):

@@ -7,31 +7,44 @@ Detects suspicious network activity patterns
 from collections import defaultdict, Counter
 from datetime import datetime, timedelta
 import json
+import os
+
+from paths import safe_output_path
 
 class AnomalyDetector:
-    def __init__(self):
+    def __init__(self, max_tracked_ips=10000):
         self.port_scan_threshold = 20  # Connections to different ports from same IP
         self.syn_flood_threshold = 100  # SYN packets per second
         self.connection_rate_threshold = 50  # Connections per second from single IP
-        
+        # Bound how many distinct source IPs we track so a long-running
+        # capture (e.g. an always-on home-server service) can't grow these
+        # dicts without limit.
+        self.max_tracked_ips = max_tracked_ips
+
         self.ip_port_map = defaultdict(set)  # Track ports accessed per IP
         self.ip_connection_times = defaultdict(list)  # Track connection timestamps
         self.syn_packets = defaultdict(int)
         self.alerts = []
-        
+
+    def _evict_oldest_if_full(self, tracking_dict, key):
+        """Drop the oldest-tracked IP before adding a new one past the cap."""
+        if key not in tracking_dict and len(tracking_dict) >= self.max_tracked_ips:
+            del tracking_dict[next(iter(tracking_dict))]
+
     def analyze_packet(self, packet_info):
         """Analyze a single packet for suspicious activity"""
         src_ip = packet_info.get('src_ip')
         dst_port = packet_info.get('dst_port')
         timestamp = datetime.fromisoformat(packet_info['timestamp'])
         protocol = packet_info.get('protocol')
-        
+
         alerts = []
-        
+
         # Port Scan Detection
         if dst_port and src_ip:
+            self._evict_oldest_if_full(self.ip_port_map, src_ip)
             self.ip_port_map[src_ip].add(dst_port)
-            
+
             if len(self.ip_port_map[src_ip]) > self.port_scan_threshold:
                 alert = {
                     'type': 'PORT_SCAN',
@@ -46,6 +59,7 @@ class AnomalyDetector:
         
         # Connection Rate Detection
         if src_ip:
+            self._evict_oldest_if_full(self.ip_connection_times, src_ip)
             self.ip_connection_times[src_ip].append(timestamp)
             
             # Clean old timestamps (older than 1 second)
@@ -192,15 +206,15 @@ class AnomalyDetector:
     
     def export_alerts(self, filename='security_alerts.json'):
         """Export alerts to JSON file"""
-        if '..' in filename:
-            raise Exception('Invalid file path')
-        with open(filename, 'w') as f:
+        resolved_path = safe_output_path(filename)
+        with open(resolved_path, 'w') as f:
             json.dump({
                 'generated_at': datetime.now().isoformat(),
                 'total_alerts': len(self.alerts),
                 'alerts': self.alerts
             }, f, indent=2)
-        
+        os.chmod(resolved_path, 0o600)
+
         return filename
 
 
