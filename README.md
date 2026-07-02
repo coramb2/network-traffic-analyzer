@@ -179,6 +179,69 @@ ip link show
 sudo venv/bin/python3 network_monitor.py -t 60
 ```
 
+## 🏠 Home Server Deployment (Docker)
+
+For unattended use on a home server, `docker-compose.yml` runs scheduled
+captures instead of one-off manual runs: every `INTERVAL_SECONDS` it
+captures for `CAPTURE_DURATION` seconds, writes a full report set
+(JSON/CSV/HTML/alerts) into its own timestamped folder under `./reports`,
+updates a `reports/latest` symlink, and prunes old runs beyond
+`RETENTION_RUNS` so disk usage stays bounded.
+
+### Setup
+
+```bash
+# Find your host's real network interface (not a container/veth one)
+ip -brief link
+
+# Configure
+cp .env.example .env
+# edit .env: set IFACE to the interface above, adjust CAPTURE_DURATION/
+# INTERVAL_SECONDS/RETENTION_RUNS to taste
+
+# The container runs as a fixed non-root uid (10001) for defense in depth —
+# make the host-side reports directory writable by it
+mkdir -p reports && sudo chown -R 10001:10001 reports
+
+# Build and start
+docker compose up -d --build
+
+# Watch it work
+docker compose logs -f
+```
+
+Reports land in `./reports/<UTC timestamp>/` on the host, with
+`./reports/latest` always pointing at the newest run. Open
+`reports/latest/traffic_report.html` in a browser for the visual report.
+
+### Why it's set up this way
+
+- **`network_mode: host`**: the analyzer's whole job is to see your home
+  network's real traffic, which bridge networking hides from a container.
+  This does mean the container shares the host's network namespace — a
+  deliberate tradeoff for this tool, not something to copy into
+  general-purpose containers.
+- **`cap_drop: ALL` + `cap_add: [NET_RAW, NET_ADMIN]`, non-root user**:
+  packet capture needs raw sockets, not full root. The image grants those
+  two capabilities directly to the `python3` binary (`setcap`, see
+  `Dockerfile`) and runs as an unprivileged `analyzer` user, so a bug or
+  compromise in this tool doesn't hand over a root shell on your server.
+- **Scheduled runs instead of one continuous capture**: bounds memory
+  growth and gives you a rotating history of reports instead of one
+  ever-growing process/file. `RETENTION_RUNS` caps disk usage.
+- **Reports written `0600`**: capture output includes every device's IPs,
+  ports, and (in the JSON) visited HTTP hosts/paths — treat `./reports` as
+  sensitive if other people use your network.
+- **`mem_limit` / `pids_limit`**: bounds a runaway capture on a busy network.
+
+### Manual (non-Docker) alternative
+
+You can still run it directly with `sudo`, as described above — useful for
+one-off captures or debugging. The systemd-service route (a persistent
+unit + `setcap` on a venv's python, instead of Docker) is a reasonable
+alternative if you'd rather not run Docker on your home server; ask if
+you'd like that added too.
+
 ## 📚 Learning Resources
 
 This project demonstrates understanding of:

@@ -1,0 +1,39 @@
+services:
+  network-traffic-analyzer:
+    build: .
+    container_name: network-traffic-analyzer
+    restart: unless-stopped
+
+    # Bridge networking only sees the container's own virtual interface.
+    # Host networking is required so the capture actually observes traffic
+    # on your home server's real network interface.
+    network_mode: host
+
+    # Least privilege: drop every capability, then add back only the two
+    # needed for raw packet capture (see Dockerfile for how the non-root
+    # "analyzer" user is granted them via setcap).
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+
+    environment:
+      # Interface to capture on. Find yours on the host with `ip -brief link`.
+      # Leave blank to let scapy pick its default interface.
+      IFACE: "${IFACE:-}"
+      # Seconds to capture per scheduled run.
+      CAPTURE_DURATION: "${CAPTURE_DURATION:-300}"
+      # Seconds between the start of one capture run and the next.
+      INTERVAL_SECONDS: "${INTERVAL_SECONDS:-3600}"
+      # How many past run directories to keep under ./reports.
+      RETENTION_RUNS: "${RETENTION_RUNS:-24}"
+      # Optional BPF filter, e.g. "tcp port 80 or tcp port 443".
+      CAPTURE_FILTER: "${CAPTURE_FILTER:-}"
+
+    volumes:
+      - ./reports:/data/reports
+
+    # Bound resource usage in case of a runaway capture.
+    mem_limit: 512m
+    pids_limit: 100
