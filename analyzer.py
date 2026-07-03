@@ -161,7 +161,10 @@ class PacketAnalyzer:
 
         with open(resolved_path, 'w') as f:
             json.dump(output, f, indent=2)
-        os.chmod(resolved_path, 0o600)
+        # Group-readable, not just owner: the dashboard container reads these
+        # reports as a different uid, but shares gid 0 with the capture
+        # container's user by design (see Dockerfile / Dockerfile.dashboard).
+        os.chmod(resolved_path, 0o640)
 
         console.print(f"\n[green]✓[/green] Analysis exported to {filename}")
 
@@ -188,7 +191,7 @@ class PacketAnalyzer:
         resolved_path = safe_output_path(filename)
         with open(resolved_path, 'w') as f:
             json.dump(snapshot, f, indent=2)
-        os.chmod(resolved_path, 0o600)
+        os.chmod(resolved_path, 0o640)
 
     def start_capture(self, packet_count=0, timeout=None, filter_str=None):
         """Start capturing packets"""

@@ -8,3 +8,5 @@ reports/
 *.csv
 *.html
 !requirements.txt
+!templates/*.html
+!static/**

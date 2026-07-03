@@ -121,7 +121,7 @@ class TrafficReporter:
 
             for packet in packets:
                 writer.writerow(packet)
-        os.chmod(resolved_path, 0o600)
+        os.chmod(resolved_path, 0o640)
 
         return filename
 
@@ -139,7 +139,7 @@ class TrafficReporter:
         resolved_path = safe_output_path(filename)
         with open(resolved_path, 'w') as f:
             json.dump(full_report, f, indent=2)
-        os.chmod(resolved_path, 0o600)
+        os.chmod(resolved_path, 0o640)
 
         return filename
     
@@ -157,7 +157,9 @@ class TrafficReporter:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Network Traffic Analysis Report</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"
+            integrity="sha384-9MhbyIRcBVQiiC7FSd7T38oJNj2Zh+EfxS7/vjhBi4OOT78NlHSnzM31EZRWR1LZ"
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
         body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -357,7 +359,7 @@ class TrafficReporter:
         resolved_path = safe_output_path(filename)
         with open(resolved_path, 'w') as f:
             f.write(html_content)
-        os.chmod(resolved_path, 0o600)
+        os.chmod(resolved_path, 0o640)
 
         return filename
 

@@ -1,0 +1,5 @@
+# Scripts that run inside Linux containers must keep LF endings even when
+# checked out on Windows with core.autocrlf=true - a CRLF shebang line
+# (e.g. "#!/usr/bin/env bash\r") fails to exec inside the container.
+*.sh text eol=lf
+Dockerfile* text eol=lf

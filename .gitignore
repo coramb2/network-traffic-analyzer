@@ -40,6 +40,7 @@ env/
 *.csv
 *.html
 !requirements.txt
+!templates/*.html
 
 # Logs
 *.log

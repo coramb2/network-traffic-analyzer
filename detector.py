@@ -215,7 +215,7 @@ class AnomalyDetector:
                 'total_alerts': len(self.alerts),
                 'alerts': self.alerts
             }, f, indent=2)
-        os.chmod(resolved_path, 0o600)
+        os.chmod(resolved_path, 0o640)
 
         return filename
 
