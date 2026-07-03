@@ -13,6 +13,7 @@ INTERVAL_SECONDS="${INTERVAL_SECONDS:-3600}"
 RETENTION_RUNS="${RETENTION_RUNS:-24}"
 IFACE="${IFACE:-}"
 CAPTURE_FILTER="${CAPTURE_FILTER:-}"
+CAPTURE_PCAP="${CAPTURE_PCAP:-false}"
 
 mkdir -p "$REPORTS_ROOT"
 
@@ -28,6 +29,9 @@ while true; do
     fi
     if [ -n "$CAPTURE_FILTER" ]; then
         args+=(-f "$CAPTURE_FILTER")
+    fi
+    if [ "$CAPTURE_PCAP" = "true" ]; then
+        args+=(--pcap)
     fi
 
     echo "[$(date -u +%FT%TZ)] starting capture run $run_id (${CAPTURE_DURATION}s)"

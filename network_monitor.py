@@ -32,6 +32,12 @@ Examples:
   
   # Full analysis with all reports
   sudo python3 network_monitor.py -t 120 --html --csv --alerts
+
+  # Also save raw packets for later inspection in Wireshark/tcpdump
+  sudo python3 network_monitor.py -t 60 --pcap
+
+  # Re-analyze a capture taken elsewhere (no root/capabilities needed)
+  python3 network_monitor.py -r existing_capture.pcap --html --alerts
         """
     )
     
@@ -55,7 +61,11 @@ Examples:
                        help='Print text summary to console')
     parser.add_argument('--alerts', action='store_true',
                        help='Enable anomaly detection and export alerts')
-    
+    parser.add_argument('--pcap', action='store_true',
+                       help='Also save raw packets to traffic_capture.pcap')
+    parser.add_argument('-r', '--read-pcap',
+                       help='Analyze an existing .pcap file instead of capturing live traffic')
+
     args = parser.parse_args()
     
     # Display banner
@@ -70,19 +80,24 @@ Examples:
     try:
         # Start packet capture
         console.print("[yellow]Starting packet capture...[/yellow]")
-        console.print(f"Interface: {args.interface or 'default'}")
+        if args.read_pcap:
+            console.print(f"Reading from: {args.read_pcap}")
+        else:
+            console.print(f"Interface: {args.interface or 'default'}")
         console.print(f"Filter: {args.filter or 'none'}")
         if args.timeout:
             console.print(f"Timeout: {args.timeout} seconds")
         if args.count:
             console.print(f"Target packets: {args.count}")
         console.print("\n[cyan]Press Ctrl+C to stop and generate reports[/cyan]\n")
-        
+
         # Capture packets
         analyzer.start_capture(
             packet_count=args.count,
             timeout=args.timeout,
-            filter_str=args.filter
+            filter_str=args.filter,
+            pcap_out='traffic_capture.pcap' if args.pcap else None,
+            read_pcap=args.read_pcap
         )
         
         # Check if we captured anything
@@ -162,6 +177,9 @@ Examples:
         if detector and detector.alerts:
             alerts_file = detector.export_alerts('security_alerts.json')
             console.print(f"[green]✓[/green] Security alerts exported to {alerts_file}")
+
+        if args.pcap:
+            console.print(f"[green]✓[/green] Raw packets saved to traffic_capture.pcap")
         
         # Print summary if requested
         if args.summary:
@@ -179,7 +197,9 @@ Examples:
             console.print(f"  • traffic_report.html (visual report)")
         if detector and detector.alerts:
             console.print(f"  • security_alerts.json (security alerts)")
-        
+        if args.pcap:
+            console.print(f"  • traffic_capture.pcap (raw packets)")
+
         console.print("\n[cyan]Tip: Use --html flag to generate a visual report[/cyan]")
         console.print("[cyan]     Use --summary flag to print analysis to console[/cyan]\n")
         

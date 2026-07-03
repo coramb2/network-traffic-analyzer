@@ -95,6 +95,7 @@ def run_summary(run_id):
         "unresolved_count": unresolved_count,
         "has_html": os.path.isfile(os.path.join(run_dir, "traffic_report.html")),
         "has_csv": os.path.isfile(os.path.join(run_dir, "traffic_data.csv")),
+        "has_pcap": os.path.isfile(os.path.join(run_dir, "traffic_capture.pcap")),
     }
 
 
@@ -162,6 +163,7 @@ def api_run_detail(run_id):
             "alerts": annotated_alerts,
             "has_html": os.path.isfile(os.path.join(run_dir, "traffic_report.html")),
             "has_csv": os.path.isfile(os.path.join(run_dir, "traffic_data.csv")),
+            "has_pcap": os.path.isfile(os.path.join(run_dir, "traffic_capture.pcap")),
         }
     )
 
@@ -228,6 +230,14 @@ def api_run_csv(run_id):
     if not os.path.isfile(os.path.join(run_dir, "traffic_data.csv")):
         abort(404)
     return send_from_directory(run_dir, "traffic_data.csv", as_attachment=True)
+
+
+@app.route("/api/runs/<run_id>/traffic_capture.pcap")
+def api_run_pcap(run_id):
+    run_dir = safe_run_dir(run_id)
+    if not os.path.isfile(os.path.join(run_dir, "traffic_capture.pcap")):
+        abort(404)
+    return send_from_directory(run_dir, "traffic_capture.pcap", as_attachment=True)
 
 
 if __name__ == "__main__":
