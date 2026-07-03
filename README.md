@@ -143,6 +143,7 @@ network-traffic-analyzer/
 ├── reporter.py                 # Multi-format report generation (JSON/CSV/HTML)
 ├── network_monitor.py          # Integrated CLI application
 ├── alert_rules.py              # Shared allowlist/resolved-alert state (both containers)
+├── device_names.py             # Shared device naming + reverse-DNS resolution
 ├── webapp.py                   # Dashboard: live view, run history, alert workflow
 ├── templates/index.html        # Dashboard frontend
 ├── static/vendor/chart.min.js  # Vendored Chart.js (no CDN dependency)
@@ -272,6 +273,22 @@ This state (`data/alert_state.json`) lives in its own small volume, kept
 separate from `./reports`: the dashboard needs read-write access to manage
 it, while the capture container only ever reads it (mounted `:ro` there)
 to know what to suppress.
+
+### Device Names
+
+Raw IPs are hard to reason about ("port scan from 192.168.1.47" — which
+box is that?). The dashboard's **Devices** panel lets you give any IP a
+friendly name, which then shows up everywhere that IP appears (top-IP
+tables, alert descriptions).
+
+To save you naming everything by hand, each capture run does best-effort
+**reverse-DNS** (PTR) lookups on the busiest IPs and stores the results as
+suggestions — click a suggestion to accept it as the name, or type your
+own. Lookups are time-bounded so they can't stall a run, and can be turned
+off entirely with `RESOLVE_HOSTNAMES=false` (or `--no-hostnames` on the
+CLI) if you'd rather no PTR queries leave the host. Names are keyed by IP
+for now, stored in `data/device_names.json` in the same read-write state
+volume as the alert rules.
 
 ### Why it's set up this way
 

@@ -15,6 +15,9 @@ from datetime import datetime, timezone
 from flask import Flask, abort, jsonify, render_template, request, send_from_directory
 
 import alert_rules
+import device_names
+
+SEEN_DEVICES_RUN_LIMIT = 20
 
 REPORTS_ROOT = os.path.realpath(os.environ.get("REPORTS_ROOT", "/data/reports"))
 LIVE_STALE_SECONDS = 5
@@ -214,6 +217,62 @@ def api_alert_unresolve(run_id, index):
     safe_run_dir(run_id)
     alert_rules.unmark_resolved(f"{run_id}:{index}")
     return "", 204
+
+
+@app.route("/api/devices", methods=["GET", "POST"])
+def api_devices():
+    if request.method == "GET":
+        return jsonify(device_names.load_names())
+
+    body = request.get_json(silent=True) or {}
+    ip = body.get("ip", "")
+    if not device_names.is_valid_ip(ip):
+        abort(400)
+    names = device_names.set_name(ip, body.get("name", ""))
+    return jsonify(names)
+
+
+@app.route("/api/devices/<ip>", methods=["DELETE"])
+def api_device_delete(ip):
+    if not device_names.is_valid_ip(ip):
+        abort(400)
+    device_names.remove_name(ip)
+    return "", 204
+
+
+@app.route("/api/seen-devices")
+def api_seen_devices():
+    """Every IP seen across recent runs, with its best reverse-DNS
+    suggestion and current manual name - the worklist for naming devices.
+
+    Newest run wins for the hostname suggestion; packet counts are summed
+    across the scanned runs so the busiest devices sort to the top.
+    """
+    names = device_names.load_names()
+    seen = {}  # ip -> {"packet_count": int, "hostname": str|None}
+
+    for run_id in list_run_ids()[:SEEN_DEVICES_RUN_LIMIT]:
+        analysis = read_json(os.path.join(REPORTS_ROOT, run_id, "traffic_analysis.json"))
+        if not analysis:
+            continue
+        hostnames = analysis.get("hostnames", {})
+        for ip, count in analysis.get("top_ips", {}).items():
+            entry = seen.setdefault(ip, {"packet_count": 0, "hostname": None})
+            entry["packet_count"] += count
+            # Runs are newest-first, so only fill hostname if not already set.
+            if entry["hostname"] is None and hostnames.get(ip):
+                entry["hostname"] = hostnames[ip]
+
+    # Include manually-named IPs even if they weren't in the scanned runs.
+    for ip in names:
+        seen.setdefault(ip, {"packet_count": 0, "hostname": None})
+
+    devices = [
+        {"ip": ip, "packet_count": v["packet_count"], "hostname": v["hostname"], "name": names.get(ip)}
+        for ip, v in seen.items()
+    ]
+    devices.sort(key=lambda d: d["packet_count"], reverse=True)
+    return jsonify(devices)
 
 
 @app.route("/api/runs/<run_id>/report.html")

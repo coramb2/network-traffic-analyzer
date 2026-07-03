@@ -15,6 +15,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from analyzer import PacketAnalyzer
 from detector import AnomalyDetector
 from reporter import TrafficReporter
+import device_names
 
 console = Console()
 
@@ -65,6 +66,8 @@ Examples:
                        help='Also save raw packets to traffic_capture.pcap')
     parser.add_argument('-r', '--read-pcap',
                        help='Analyze an existing .pcap file instead of capturing live traffic')
+    parser.add_argument('--no-hostnames', action='store_true',
+                       help='Skip reverse-DNS lookups (no device-name suggestions)')
 
     args = parser.parse_args()
     
@@ -133,18 +136,31 @@ Examples:
         
         # Generate reports
         console.print("\n[yellow]Generating reports...[/yellow]")
-        
+
+        # Resolve reverse-DNS names for the busiest IPs, to power the
+        # dashboard's device-name suggestions. Best-effort and time-bounded
+        # (see device_names.resolve_hostnames); skipped with --no-hostnames.
+        top_ip_list = [ip for ip, _ in sorted(analyzer.ip_stats.items(),
+                                              key=lambda x: x[1], reverse=True)[:20]]
+        hostnames = {}
+        if not args.no_hostnames and top_ip_list:
+            console.print("[yellow]Resolving device hostnames...[/yellow]")
+            hostnames = device_names.resolve_hostnames(top_ip_list)
+            if hostnames:
+                console.print(f"[green]✓[/green] Resolved {len(hostnames)} hostname(s)")
+
         # Prepare analyzer data for reporting
         analyzer_data = {
             'analysis_time': datetime.now().isoformat(),
             'duration_seconds': (datetime.now() - analyzer.start_time).seconds,
             'total_packets': analyzer.packet_count,
             'protocol_stats': dict(analyzer.protocol_stats),
-            'top_ips': dict(sorted(analyzer.ip_stats.items(), 
+            'top_ips': dict(sorted(analyzer.ip_stats.items(),
                                   key=lambda x: x[1], reverse=True)[:20]),
-            'top_ports': {str(k): v for k, v in 
-                         sorted(analyzer.port_stats.items(), 
+            'top_ports': {str(k): v for k, v in
+                         sorted(analyzer.port_stats.items(),
                                key=lambda x: x[1], reverse=True)[:20]},
+            'hostnames': hostnames,
             'recent_packets': analyzer.packets[-100:]
         }
         
@@ -160,7 +176,7 @@ Examples:
         reporter = TrafficReporter(analyzer_data, detector_data)
         
         # Export JSON (always)
-        analyzer.export_to_json(args.output)
+        analyzer.export_to_json(args.output, hostnames=hostnames)
         
         # Export CSV if requested
         if args.csv:
