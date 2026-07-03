@@ -30,9 +30,14 @@ services:
       RETENTION_RUNS: "${RETENTION_RUNS:-24}"
       # Optional BPF filter, e.g. "tcp port 80 or tcp port 443".
       CAPTURE_FILTER: "${CAPTURE_FILTER:-}"
+      ALERT_STATE_PATH: /data/state/alert_state.json
 
     volumes:
       - ./reports:/data/reports
+      # Allowlist rules managed from the dashboard; capture only ever
+      # reads this to suppress matching alerts, so it's mounted read-only
+      # here even though the file itself is group-writable.
+      - ./data:/data/state:ro
 
     # Bound resource usage in case of a runaway capture.
     mem_limit: 512m
@@ -50,9 +55,13 @@ services:
     # capabilities.
     environment:
       REPORTS_ROOT: /data/reports
+      ALERT_STATE_PATH: /data/state/alert_state.json
 
     volumes:
       - ./reports:/data/reports:ro
+      # Read-write: this is the only state the dashboard ever writes -
+      # allowlist rules and resolved-alert markers, not report data.
+      - ./data:/data/state
 
     ports:
       - "${DASHBOARD_PORT:-8080}:8080"

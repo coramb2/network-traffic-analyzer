@@ -10,6 +10,7 @@ import json
 import os
 
 from paths import safe_output_path
+import alert_rules
 
 class AnomalyDetector:
     def __init__(self, max_tracked_ips=10000):
@@ -26,10 +27,22 @@ class AnomalyDetector:
         self.syn_packets = defaultdict(int)
         self.alerts = []
 
+        # Loaded once per run: rules added via the dashboard apply starting
+        # next capture cycle, not retroactively mid-run.
+        self.allowlist = alert_rules.load_state()['allowlist']
+
     def _evict_oldest_if_full(self, tracking_dict, key):
         """Drop the oldest-tracked IP before adding a new one past the cap."""
         if key not in tracking_dict and len(tracking_dict) >= self.max_tracked_ips:
             del tracking_dict[next(iter(tracking_dict))]
+
+    def _record(self, alert, alerts_out):
+        """Append alert to both the per-call and running alert lists,
+        unless it matches an allowlist rule."""
+        if alert_rules.is_allowlisted(alert, self.allowlist):
+            return
+        alerts_out.append(alert)
+        self.alerts.append(alert)
 
     def analyze_packet(self, packet_info):
         """Analyze a single packet for suspicious activity"""
@@ -46,16 +59,14 @@ class AnomalyDetector:
             self.ip_port_map[src_ip].add(dst_port)
 
             if len(self.ip_port_map[src_ip]) > self.port_scan_threshold:
-                alert = {
+                self._record({
                     'type': 'PORT_SCAN',
                     'severity': 'HIGH',
                     'timestamp': timestamp.isoformat(),
                     'source_ip': src_ip,
                     'description': f'Possible port scan detected from {src_ip}',
                     'details': f'Accessed {len(self.ip_port_map[src_ip])} different ports'
-                }
-                alerts.append(alert)
-                self.alerts.append(alert)
+                }, alerts)
         
         # Connection Rate Detection
         if src_ip:
@@ -70,16 +81,14 @@ class AnomalyDetector:
             
             conn_rate = len(self.ip_connection_times[src_ip])
             if conn_rate > self.connection_rate_threshold:
-                alert = {
+                self._record({
                     'type': 'HIGH_CONNECTION_RATE',
                     'severity': 'MEDIUM',
                     'timestamp': timestamp.isoformat(),
                     'source_ip': src_ip,
                     'description': f'High connection rate from {src_ip}',
                     'details': f'{conn_rate} connections per second'
-                }
-                alerts.append(alert)
-                self.alerts.append(alert)
+                }, alerts)
         
         # Suspicious Ports Detection
         suspicious_ports = {
@@ -95,7 +104,7 @@ class AnomalyDetector:
         }
         
         if dst_port in suspicious_ports:
-            alert = {
+            self._record({
                 'type': 'SUSPICIOUS_PORT',
                 'severity': 'MEDIUM',
                 'timestamp': timestamp.isoformat(),
@@ -103,23 +112,19 @@ class AnomalyDetector:
                 'destination_port': dst_port,
                 'description': f'Access to potentially vulnerable service ({suspicious_ports[dst_port]})',
                 'details': f'Connection to port {dst_port} ({suspicious_ports[dst_port]})'
-            }
-            alerts.append(alert)
-            self.alerts.append(alert)
+            }, alerts)
 
         # Large Packet Detection (potential data exfiltration)
         if packet_info.get('size', 0) > 1400:  # Close to MTU size
             if protocol == 'UDP':
-                alert = {
+                self._record({
                     'type': 'LARGE_PACKET',
                     'severity': 'LOW',
                     'timestamp': timestamp.isoformat(),
                     'source_ip': src_ip,
                     'description': 'Large UDP packet detected',
                     'details': f'Packet size: {packet_info["size"]} bytes'
-                }
-                alerts.append(alert)
-                self.alerts.append(alert)
+                }, alerts)
 
         return alerts
     
@@ -136,23 +141,23 @@ class AnomalyDetector:
         
         # Detect unusual protocol ratios
         if protocol_counts.get('ICMP', 0) / total_packets > 0.3:
-            alerts.append({
+            self._record({
                 'type': 'UNUSUAL_PROTOCOL_RATIO',
                 'severity': 'MEDIUM',
                 'timestamp': datetime.now().isoformat(),
                 'description': 'Unusually high ICMP traffic',
                 'details': f'ICMP packets: {protocol_counts["ICMP"]/total_packets*100:.1f}% of total traffic'
-            })
-        
+            }, alerts)
+
         # Detect traffic to/from private IPs going external
         for packet in packets[-50:]:  # Check recent packets
             src_ip = packet.get('src_ip', '')
             dst_ip = packet.get('dst_ip', '')
-            
+
             # Check for RFC1918 private IP communicating with public IP
             if self._is_private_ip(src_ip) and not self._is_private_ip(dst_ip):
                 if dst_ip not in ['8.8.8.8', '8.8.4.4', '1.1.1.1']:  # Ignore DNS
-                    alerts.append({
+                    self._record({
                         'type': 'PRIVATE_TO_PUBLIC',
                         'severity': 'LOW',
                         'timestamp': packet['timestamp'],
@@ -160,8 +165,8 @@ class AnomalyDetector:
                         'destination_ip': dst_ip,
                         'description': 'Private IP communicating with public IP',
                         'details': f'{src_ip} -> {dst_ip}'
-                    })
-        
+                    }, alerts)
+
         return alerts
     
     def _is_private_ip(self, ip):
