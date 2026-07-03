@@ -121,18 +121,26 @@ The built-in anomaly detection engine identifies:
 
 - **Scapy 2.5.0**: Powerful Python packet manipulation library
 - **Rich 13.7.0**: Modern terminal UI with live updates
+- **Flask 3.0.3**: Read-only web dashboard for live stats and run history
 - **Python Threading**: Non-blocking packet processing
 - **BPF (Berkeley Packet Filter)**: Industry-standard packet filtering
 
 ## 📁 Project Structure
 ```
 network-traffic-analyzer/
-├── analyzer.py          # Main packet capture and real-time analysis
-├── detector.py          # Anomaly detection engine
-├── reporter.py          # Multi-format report generation (JSON/CSV/HTML)
-├── network_monitor.py   # Integrated CLI application
-├── requirements.txt     # Python dependencies
-└── README.md           # Documentation
+├── analyzer.py                 # Main packet capture and real-time analysis
+├── detector.py                 # Anomaly detection engine
+├── reporter.py                 # Multi-format report generation (JSON/CSV/HTML)
+├── network_monitor.py          # Integrated CLI application
+├── webapp.py                   # Read-only Flask dashboard (live view + run history)
+├── templates/index.html        # Dashboard frontend
+├── static/vendor/chart.min.js  # Vendored Chart.js (no CDN dependency)
+├── requirements.txt            # Python dependencies (capture container)
+├── requirements-dashboard.txt  # Python dependencies (dashboard container)
+├── Dockerfile                  # Capture container image
+├── Dockerfile.dashboard        # Dashboard container image
+├── docker-compose.yml          # Both services wired together
+└── README.md                  # Documentation
 ```
 
 ## 🎓 Skills Demonstrated
@@ -212,7 +220,21 @@ docker compose logs -f
 
 Reports land in `./reports/<UTC timestamp>/` on the host, with
 `./reports/latest` always pointing at the newest run. Open
-`reports/latest/traffic_report.html` in a browser for the visual report.
+`reports/latest/traffic_report.html` in a browser for the visual report,
+or use the web dashboard below for a live view plus history browsing.
+
+### Web Dashboard
+
+`docker compose up` also starts a `dashboard` service: a small read-only
+Flask app at `http://<host>:8080` (change with `DASHBOARD_PORT` in `.env`)
+that polls the capture container's live stats during an active run and
+lets you browse past runs (alerts, protocol breakdown, links to each run's
+full HTML report / CSV).
+
+It's a separate container from the capture service on purpose: it only
+needs read access to `./reports` (mounted `:ro`) and one published port —
+no `NET_RAW`/`NET_ADMIN`, no host networking. Restarting or rebuilding it
+never touches the capture container.
 
 ### Why it's set up this way
 
@@ -229,9 +251,11 @@ Reports land in `./reports/<UTC timestamp>/` on the host, with
 - **Scheduled runs instead of one continuous capture**: bounds memory
   growth and gives you a rotating history of reports instead of one
   ever-growing process/file. `RETENTION_RUNS` caps disk usage.
-- **Reports written `0600`**: capture output includes every device's IPs,
+- **Reports written `0640`**: capture output includes every device's IPs,
   ports, and (in the JSON) visited HTTP hosts/paths — treat `./reports` as
-  sensitive if other people use your network.
+  sensitive if other people use your network. Group-readable (not `0600`)
+  because the dashboard container reads them as a different, unprivileged
+  uid that shares the capture container's `gid 0` by design.
 - **`mem_limit` / `pids_limit`**: bounds a runaway capture on a busy network.
 
 ### Manual (non-Docker) alternative
@@ -258,7 +282,7 @@ Potential additions:
 - [ ] PCAP file import/export
 - [ ] Real-time alerting (email/Slack/webhook)
 - [ ] Database storage for historical analysis
-- [ ] Web-based dashboard
+- [x] Web-based dashboard
 
 ## 📝 License
 

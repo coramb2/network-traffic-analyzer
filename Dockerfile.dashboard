@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+# No scapy/tcpdump/setcap here: the dashboard only reads report files off a
+# read-only volume and serves HTTP. Keeping it a separate image from the
+# capture container (see Dockerfile) means it never needs NET_RAW/NET_ADMIN.
+WORKDIR /app
+
+COPY requirements-dashboard.txt .
+RUN pip install --no-cache-dir -r requirements-dashboard.txt
+
+COPY webapp.py .
+COPY templates ./templates
+COPY static ./static
+
+RUN useradd --uid 10002 --gid 0 --no-create-home --shell /usr/sbin/nologin dashboard
+USER dashboard
+
+EXPOSE 8080
+CMD ["python3", "webapp.py"]

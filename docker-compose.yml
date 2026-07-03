@@ -37,3 +37,25 @@ services:
     # Bound resource usage in case of a runaway capture.
     mem_limit: 512m
     pids_limit: 100
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: network-traffic-dashboard
+    restart: unless-stopped
+
+    # No packet-capture privileges needed: just reads report files and
+    # serves HTTP, so it stays off host networking and gets no added
+    # capabilities.
+    environment:
+      REPORTS_ROOT: /data/reports
+
+    volumes:
+      - ./reports:/data/reports:ro
+
+    ports:
+      - "${DASHBOARD_PORT:-8080}:8080"
+
+    mem_limit: 256m
+    pids_limit: 50
