@@ -12,10 +12,20 @@ import os
 import re
 from datetime import datetime, timezone
 
-from flask import Flask, abort, jsonify, render_template, send_from_directory
+from flask import Flask, abort, jsonify, render_template, request, send_from_directory
+
+import alert_rules
 
 REPORTS_ROOT = os.path.realpath(os.environ.get("REPORTS_ROOT", "/data/reports"))
 LIVE_STALE_SECONDS = 5
+VALID_ALERT_TYPES = {
+    "PORT_SCAN",
+    "HIGH_CONNECTION_RATE",
+    "SUSPICIOUS_PORT",
+    "LARGE_PACKET",
+    "UNUSUAL_PROTOCOL_RATIO",
+    "PRIVATE_TO_PUBLIC",
+}
 
 RUN_ID_RE = re.compile(r"^\d{8}T\d{6}Z$")
 
@@ -70,7 +80,10 @@ def run_summary(run_id):
     if analysis is None:
         return None
 
-    alerts = read_json(os.path.join(run_dir, "security_alerts.json"))
+    alerts_data = read_json(os.path.join(run_dir, "security_alerts.json"))
+    alert_list = alerts_data.get("alerts", []) if alerts_data else []
+    resolved = alert_rules.resolved_keys(alert_rules.load_state()["resolved"])
+    unresolved_count = sum(1 for i in range(len(alert_list)) if f"{run_id}:{i}" not in resolved)
 
     return {
         "run_id": run_id,
@@ -78,7 +91,8 @@ def run_summary(run_id):
         "duration_seconds": analysis.get("duration_seconds", 0),
         "total_packets": analysis.get("total_packets", 0),
         "protocol_stats": analysis.get("protocol_stats", {}),
-        "alert_count": alerts.get("total_alerts", 0) if alerts else 0,
+        "alert_count": len(alert_list),
+        "unresolved_count": unresolved_count,
         "has_html": os.path.isfile(os.path.join(run_dir, "traffic_report.html")),
         "has_csv": os.path.isfile(os.path.join(run_dir, "traffic_data.csv")),
     }
@@ -132,17 +146,72 @@ def api_run_detail(run_id):
     if analysis is None:
         abort(404)
 
-    alerts = read_json(os.path.join(run_dir, "security_alerts.json"))
+    alerts_data = read_json(os.path.join(run_dir, "security_alerts.json"))
+    alert_list = alerts_data.get("alerts", []) if alerts_data else []
+    resolved = alert_rules.resolved_keys(alert_rules.load_state()["resolved"])
+
+    annotated_alerts = []
+    for i, alert in enumerate(alert_list):
+        alert_key = f"{run_id}:{i}"
+        annotated_alerts.append({**alert, "alert_key": alert_key, "resolved": alert_key in resolved})
 
     return jsonify(
         {
             "run_id": run_id,
             "analysis": analysis,
-            "alerts": alerts.get("alerts", []) if alerts else [],
+            "alerts": annotated_alerts,
             "has_html": os.path.isfile(os.path.join(run_dir, "traffic_report.html")),
             "has_csv": os.path.isfile(os.path.join(run_dir, "traffic_data.csv")),
         }
     )
+
+
+@app.route("/api/rules", methods=["GET", "POST"])
+def api_rules():
+    if request.method == "GET":
+        return jsonify(alert_rules.load_state()["allowlist"])
+
+    body = request.get_json(silent=True) or {}
+    alert_type = body.get("alert_type")
+    if alert_type not in VALID_ALERT_TYPES:
+        abort(400)
+
+    destination_port = body.get("destination_port")
+    if destination_port is not None:
+        try:
+            destination_port = int(destination_port)
+        except (TypeError, ValueError):
+            abort(400)
+
+    rule = alert_rules.add_rule(
+        alert_type=alert_type,
+        source_ip=(body.get("source_ip") or None),
+        destination_port=destination_port,
+        note=body.get("note", ""),
+    )
+    return jsonify(rule), 201
+
+
+@app.route("/api/rules/<rule_id>", methods=["DELETE"])
+def api_rule_delete(rule_id):
+    if not alert_rules.remove_rule(rule_id):
+        abort(404)
+    return "", 204
+
+
+@app.route("/api/runs/<run_id>/alerts/<int:index>/resolve", methods=["POST"])
+def api_alert_resolve(run_id, index):
+    safe_run_dir(run_id)  # validates run_id, 404s on bad/unknown runs
+    body = request.get_json(silent=True) or {}
+    resolved = alert_rules.mark_resolved(f"{run_id}:{index}", note=body.get("note", ""))
+    return jsonify(resolved)
+
+
+@app.route("/api/runs/<run_id>/alerts/<int:index>/unresolve", methods=["POST"])
+def api_alert_unresolve(run_id, index):
+    safe_run_dir(run_id)
+    alert_rules.unmark_resolved(f"{run_id}:{index}")
+    return "", 204
 
 
 @app.route("/api/runs/<run_id>/report.html")

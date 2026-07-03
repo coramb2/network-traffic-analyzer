@@ -132,7 +132,8 @@ network-traffic-analyzer/
 ├── detector.py                 # Anomaly detection engine
 ├── reporter.py                 # Multi-format report generation (JSON/CSV/HTML)
 ├── network_monitor.py          # Integrated CLI application
-├── webapp.py                   # Read-only Flask dashboard (live view + run history)
+├── alert_rules.py              # Shared allowlist/resolved-alert state (both containers)
+├── webapp.py                   # Dashboard: live view, run history, alert workflow
 ├── templates/index.html        # Dashboard frontend
 ├── static/vendor/chart.min.js  # Vendored Chart.js (no CDN dependency)
 ├── requirements.txt            # Python dependencies (capture container)
@@ -211,6 +212,10 @@ cp .env.example .env
 # make the host-side reports directory writable by it
 mkdir -p reports && sudo chown -R 10001:10001 reports
 
+# Same idea for the small shared state directory the dashboard uses to
+# store allowlist rules and resolved-alert markers (see "Alert Rules" below)
+mkdir -p data && sudo chown -R 10002:0 data && chmod -R 0770 data
+
 # Build and start
 docker compose up -d --build
 
@@ -235,6 +240,28 @@ It's a separate container from the capture service on purpose: it only
 needs read access to `./reports` (mounted `:ro`) and one published port —
 no `NET_RAW`/`NET_ADMIN`, no host networking. Restarting or rebuilding it
 never touches the capture container.
+
+### Alert Rules (allowlist + resolve)
+
+Recurring alerts for something you already know about (your own RDP jump
+box, a NAS that legitimately talks to a lot of ports, etc.) don't need to
+keep reappearing every cycle. From an alert's row in the dashboard:
+
+- **Allowlist** — pins the alert's type plus (optionally) its source IP
+  and/or destination port as a rule. Future alerts matching that pattern
+  are suppressed *before* they're ever written to `security_alerts.json` —
+  the detector loads current rules once per capture cycle, so a new rule
+  takes effect starting the next run, not retroactively. Manage existing
+  rules (see what's suppressed, remove one) in the "Alert Rules" panel.
+- **Resolve** — a lighter, per-alert acknowledgment for one-off alerts you
+  don't want allowlisted forever. It doesn't stop the alert from firing
+  again if the same thing happens later; it just marks that specific past
+  occurrence as dealt with so it stops showing as an open item.
+
+This state (`data/alert_state.json`) lives in its own small volume, kept
+separate from `./reports`: the dashboard needs read-write access to manage
+it, while the capture container only ever reads it (mounted `:ro` there)
+to know what to suppress.
 
 ### Why it's set up this way
 

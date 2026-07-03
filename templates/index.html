@@ -7,22 +7,33 @@
 <script src="{{ url_for('static', filename='vendor/chart.min.js') }}"></script>
 <style>
     :root {
-        --bg: #f5f5f5;
-        --card-bg: #ffffff;
-        --accent: #3498db;
-        --text: #2c3e50;
-        --muted: #7f8c8d;
-        --live: #2ecc71;
-        --idle: #95a5a6;
-        --none: #e74c3c;
+        --bg: #0b0618;
+        --card-bg: #161029;
+        --card-border: rgba(168, 110, 247, 0.22);
+        --accent: #38bdf8;
+        --accent-2: #a855f7;
+        --pink: #ec4899;
+        --text: #ece7ff;
+        --muted: #9a94bd;
+        --live: #22d3ee;
+        --idle: #837f9e;
+        --none: #fb7185;
+        --row-hover: rgba(168, 110, 247, 0.1);
+        --border: rgba(255, 255, 255, 0.08);
     }
     * { box-sizing: border-box; }
     body {
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         margin: 0;
         padding: 16px;
-        background-color: var(--bg);
         color: var(--text);
+        background-color: var(--bg);
+        background-image:
+            radial-gradient(ellipse 900px 500px at 5% -10%, rgba(168, 110, 247, 0.28), transparent 60%),
+            radial-gradient(ellipse 900px 600px at 95% 10%, rgba(236, 72, 153, 0.18), transparent 60%),
+            radial-gradient(ellipse 800px 500px at 50% 110%, rgba(56, 189, 248, 0.14), transparent 60%);
+        background-attachment: fixed;
+        min-height: 100vh;
     }
     .container { max-width: 1300px; margin: 0 auto; }
     header {
@@ -33,8 +44,15 @@
         gap: 12px;
         margin-bottom: 20px;
     }
-    h1 { margin: 0; font-size: 1.6rem; }
-    h2 { font-size: 1.2rem; margin: 0 0 12px 0; }
+    h1 {
+        margin: 0;
+        font-size: 1.6rem;
+        background: linear-gradient(90deg, var(--accent-2), var(--pink), var(--accent));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+    h2 { font-size: 1.15rem; margin: 0 0 12px 0; color: var(--text); }
     .status-badge {
         display: inline-flex;
         align-items: center;
@@ -42,7 +60,7 @@
         padding: 10px 16px;
         border-radius: 999px;
         background: var(--card-bg);
-        box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        border: 1px solid var(--card-border);
         font-weight: 600;
         font-size: 0.95rem;
     }
@@ -52,12 +70,12 @@
         border-radius: 50%;
         background: var(--none);
     }
-    .status-dot.live { background: var(--live); animation: pulse 2s infinite; }
+    .status-dot.live { background: var(--live); box-shadow: 0 0 10px var(--live); animation: pulse 2s infinite; }
     .status-dot.idle { background: var(--idle); }
     @keyframes pulse {
-        0% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.5); }
-        70% { box-shadow: 0 0 0 8px rgba(46, 204, 113, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+        0% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.5); }
+        70% { box-shadow: 0 0 0 8px rgba(34, 211, 238, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); }
     }
     .stats-grid {
         display: grid;
@@ -66,11 +84,12 @@
         margin-bottom: 20px;
     }
     .stat-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%);
         color: white;
         padding: 18px;
         border-radius: 10px;
         text-align: center;
+        box-shadow: 0 4px 20px rgba(168, 110, 247, 0.25);
     }
     .stat-card h3 { margin: 0; font-size: 13px; opacity: 0.9; font-weight: 500; }
     .stat-card p { margin: 8px 0 0 0; font-size: 28px; font-weight: bold; word-break: break-word; }
@@ -85,15 +104,18 @@
     }
     .panel {
         background: var(--card-bg);
+        border: 1px solid var(--card-border);
         border-radius: 10px;
         padding: 18px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
     }
+    .panel-grid .panel { margin-bottom: 0; }
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid #eee; font-size: 0.92rem; }
+    th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.92rem; }
     th { color: var(--muted); font-weight: 600; }
     tr.clickable { cursor: pointer; }
-    tr.clickable:hover, tr.clickable:active { background-color: #f0f4f8; }
+    tr.clickable:hover, tr.clickable:active { background-color: var(--row-hover); }
     .badge {
         display: inline-block;
         padding: 2px 10px;
@@ -102,23 +124,74 @@
         font-weight: 600;
         color: white;
     }
-    .badge.high { background: #e74c3c; }
-    .badge.medium { background: #f39c12; }
+    .badge.high { background: var(--none); box-shadow: 0 0 8px rgba(251, 113, 133, 0.5); }
+    .badge.medium { background: #fb923c; }
     .badge.low { background: var(--accent); }
     .badge.zero { background: var(--idle); }
     .empty { color: var(--muted); font-style: italic; padding: 12px 0; }
-    .run-detail { margin-top: 14px; padding-top: 14px; border-top: 1px solid #eee; }
-    .run-detail a {
+    .run-detail { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .btn, .run-detail a {
         display: inline-block;
         margin: 4px 8px 4px 0;
-        padding: 8px 14px;
+        padding: 7px 14px;
         border-radius: 6px;
-        background: var(--accent);
+        background: linear-gradient(135deg, var(--accent-2), var(--accent));
         color: white;
         text-decoration: none;
-        font-size: 0.9rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+        border: none;
+        cursor: pointer;
     }
-    .alert-line { padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 0.9rem; }
+    .btn.secondary { background: transparent; border: 1px solid var(--card-border); color: var(--text); }
+    .btn.danger { background: linear-gradient(135deg, var(--none), var(--pink)); }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    .alert-line {
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.9rem;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+    }
+    .alert-line.resolved { opacity: 0.5; }
+    .alert-line .desc { flex: 1; min-width: 200px; }
+    .alert-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .allowlist-form {
+        width: 100%;
+        margin-top: 6px;
+        padding: 10px;
+        border-radius: 6px;
+        background: rgba(168, 110, 247, 0.08);
+        border: 1px solid var(--card-border);
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+    .allowlist-form input {
+        flex: 1;
+        min-width: 140px;
+        padding: 6px 8px;
+        border-radius: 4px;
+        border: 1px solid var(--card-border);
+        background: var(--bg);
+        color: var(--text);
+    }
+    .rules-list { display: flex; flex-direction: column; gap: 8px; }
+    .rule-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        background: rgba(56, 189, 248, 0.06);
+        border: 1px solid var(--card-border);
+        font-size: 0.85rem;
+    }
+    .rule-row .rule-detail { flex: 1; color: var(--muted); }
+    .rule-row .rule-detail strong { color: var(--text); }
     .updated-at { color: var(--muted); font-size: 0.85rem; }
 </style>
 </head>
@@ -166,6 +239,14 @@
     </div>
 
     <div class="panel">
+        <h2>Alert Rules (Allowlist)</h2>
+        <div class="rules-list" id="rules-list"></div>
+        <div id="rules-empty" class="empty" style="display:none;">
+            No allowlist rules yet — use "Allowlist" on an alert below to stop it from recurring.
+        </div>
+    </div>
+
+    <div class="panel">
         <h2>Run History</h2>
         <table>
             <thead>
@@ -186,6 +267,7 @@ const COMMON_PORTS = {
 };
 
 let protocolChart = null;
+let currentRunId = null;
 
 function severityBadgeClass(severity) {
     return { HIGH: "high", MEDIUM: "medium", LOW: "low" }[severity] || "zero";
@@ -201,6 +283,7 @@ function fmtDuration(seconds) {
 function updateProtocolChart(protocolStats) {
     const labels = Object.keys(protocolStats || {});
     const values = Object.values(protocolStats || {});
+    const palette = ['#a855f7', '#ec4899', '#38bdf8', '#fb923c', '#34d399', '#fb7185', '#818cf8'];
 
     if (!protocolChart) {
         const ctx = document.getElementById('protocolChart').getContext('2d');
@@ -208,12 +291,13 @@ function updateProtocolChart(protocolStats) {
             type: 'doughnut',
             data: {
                 labels: labels,
-                datasets: [{
-                    data: values,
-                    backgroundColor: ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#34495e']
-                }]
+                datasets: [{ data: values, backgroundColor: palette }]
             },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'right', labels: { color: '#ece7ff' } } }
+            }
         });
     } else {
         protocolChart.data.labels = labels;
@@ -268,7 +352,29 @@ async function pollLive() {
     }
 }
 
+function alertRowHtml(alert, runId, index) {
+    const key = alert.alert_key || `${runId}:${index}`;
+    const resolvedCls = alert.resolved ? 'resolved' : '';
+    const resolveLabel = alert.resolved ? 'Un-resolve' : 'Resolve';
+    const resolveAction = alert.resolved ? 'unresolve' : 'resolve';
+    return `
+        <div class="alert-line ${resolvedCls}" data-alert-row="${key}">
+            <span class="badge ${severityBadgeClass(alert.severity)}">${alert.severity}</span>
+            <span class="desc">${alert.description}${alert.resolved ? ' <em>(resolved)</em>' : ''}</span>
+            <div class="alert-actions">
+                <button class="btn secondary"
+                    data-action="${resolveAction}" data-run-id="${runId}" data-index="${index}">${resolveLabel}</button>
+                <button class="btn secondary"
+                    data-action="show-allowlist-form" data-run-id="${runId}" data-index="${index}"
+                    data-type="${alert.type}" data-source-ip="${alert.source_ip || ''}"
+                    data-dest-port="${alert.destination_port ?? ''}">Allowlist</button>
+            </div>
+        </div>
+    `;
+}
+
 async function showRunDetail(runId) {
+    currentRunId = runId;
     const panel = document.getElementById('run-detail');
     panel.style.display = 'block';
     panel.innerHTML = '<div class="empty">Loading…</div>';
@@ -289,10 +395,9 @@ async function showRunDetail(runId) {
     }
 
     if (data.alerts && data.alerts.length > 0) {
-        html += '<h2 style="margin-top:16px;">Alerts</h2>';
-        data.alerts.slice(-20).reverse().forEach(a => {
-            html += `<div class="alert-line"><span class="badge ${severityBadgeClass(a.severity)}">${a.severity}</span> ${a.description}</div>`;
-        });
+        html += '<h2 style="margin-top:16px;">Alerts</h2><div id="alert-list">';
+        data.alerts.forEach((a, i) => { html += alertRowHtml(a, data.run_id, i); });
+        html += '</div>';
     } else {
         html += '<div class="empty">No alerts for this run.</div>';
     }
@@ -317,9 +422,16 @@ async function loadRuns() {
     runs.forEach(run => {
         const tr = document.createElement('tr');
         tr.className = 'clickable';
-        const alertBadge = run.alert_count > 0
-            ? `<span class="badge high">${run.alert_count}</span>`
-            : `<span class="badge zero">0</span>`;
+        const unresolved = run.unresolved_count ?? run.alert_count;
+        let alertBadge;
+        if (run.alert_count === 0) {
+            alertBadge = `<span class="badge zero">0</span>`;
+        } else {
+            alertBadge = `<span class="badge high">${unresolved}</span>`;
+            if (unresolved !== run.alert_count) {
+                alertBadge += ` <span class="updated-at">of ${run.alert_count}</span>`;
+            }
+        }
         tr.innerHTML = `
             <td>${run.run_id}</td>
             <td>${run.total_packets}</td>
@@ -331,10 +443,90 @@ async function loadRuns() {
     });
 }
 
+function ruleRowHtml(rule) {
+    const scope = [];
+    if (rule.source_ip) scope.push(`from <strong>${rule.source_ip}</strong>`);
+    if (rule.destination_port !== null && rule.destination_port !== undefined) scope.push(`port <strong>${rule.destination_port}</strong>`);
+    const scopeText = scope.length ? scope.join(', ') : 'any source/port';
+    const note = rule.note ? ` — ${rule.note}` : '';
+    return `
+        <div class="rule-row">
+            <div class="rule-detail"><strong>${rule.alert_type}</strong>, ${scopeText}${note}</div>
+            <button class="btn danger" data-action="delete-rule" data-rule-id="${rule.id}">Remove</button>
+        </div>
+    `;
+}
+
+async function loadRules() {
+    const res = await fetch('/api/rules');
+    const rules = await res.json();
+
+    const list = document.getElementById('rules-list');
+    const empty = document.getElementById('rules-empty');
+    list.innerHTML = rules.map(ruleRowHtml).join('');
+    empty.style.display = rules.length ? 'none' : 'block';
+}
+
+async function submitAllowlist(runId, index, alertType, sourceIp, destPort, note, scopeIp, scopePort) {
+    const body = {
+        alert_type: alertType,
+        note: note,
+        source_ip: scopeIp ? sourceIp : null,
+        destination_port: scopePort && destPort !== '' ? Number(destPort) : null,
+    };
+    await fetch('/api/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    await loadRules();
+    if (currentRunId === runId) await showRunDetail(runId);
+}
+
+document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+
+    if (action === 'resolve' || action === 'unresolve') {
+        const runId = btn.dataset.runId;
+        const index = btn.dataset.index;
+        await fetch(`/api/runs/${encodeURIComponent(runId)}/alerts/${index}/${action}`, { method: 'POST' });
+        await showRunDetail(runId);
+        await loadRuns();
+    } else if (action === 'delete-rule') {
+        await fetch(`/api/rules/${encodeURIComponent(btn.dataset.ruleId)}`, { method: 'DELETE' });
+        await loadRules();
+        if (currentRunId) await showRunDetail(currentRunId);
+    } else if (action === 'show-allowlist-form') {
+        const row = btn.closest('.alert-line');
+        if (row.querySelector('.allowlist-form')) return; // already open
+        const { runId, index, type, sourceIp, destPort } = btn.dataset;
+        const form = document.createElement('div');
+        form.className = 'allowlist-form';
+        form.innerHTML = `
+            <label><input type="checkbox" class="scope-ip" ${sourceIp ? 'checked' : 'disabled'}> IP ${sourceIp || '(none)'}</label>
+            <label><input type="checkbox" class="scope-port" ${destPort !== '' ? 'checked' : 'disabled'}> Port ${destPort || '(none)'}</label>
+            <input type="text" class="note-input" placeholder="Note (optional)">
+            <button class="btn" data-confirm="1">Confirm</button>
+            <button class="btn secondary" data-cancel="1">Cancel</button>
+        `;
+        row.appendChild(form);
+        form.querySelector('[data-cancel]').addEventListener('click', () => form.remove());
+        form.querySelector('[data-confirm]').addEventListener('click', async () => {
+            const scopeIp = form.querySelector('.scope-ip').checked;
+            const scopePort = form.querySelector('.scope-port').checked;
+            const note = form.querySelector('.note-input').value;
+            await submitAllowlist(runId, index, type, sourceIp, destPort, note, scopeIp, scopePort);
+        });
+    }
+});
+
 pollLive();
 setInterval(pollLive, 1500);
 loadRuns();
 setInterval(loadRuns, 15000);
+loadRules();
 </script>
 </body>
 </html>
