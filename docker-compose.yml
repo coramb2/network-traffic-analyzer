@@ -34,6 +34,8 @@ services:
       # (openable in Wireshark/tcpdump). Off by default - full packet
       # bytes are much larger than the JSON/CSV summaries.
       CAPTURE_PCAP: "${CAPTURE_PCAP:-false}"
+      # Set false to skip reverse-DNS lookups (no device-name suggestions).
+      RESOLVE_HOSTNAMES: "${RESOLVE_HOSTNAMES:-true}"
       ALERT_STATE_PATH: /data/state/alert_state.json
 
     volumes:
@@ -60,11 +62,12 @@ services:
     environment:
       REPORTS_ROOT: /data/reports
       ALERT_STATE_PATH: /data/state/alert_state.json
+      DEVICE_NAMES_PATH: /data/state/device_names.json
 
     volumes:
       - ./reports:/data/reports:ro
-      # Read-write: this is the only state the dashboard ever writes -
-      # allowlist rules and resolved-alert markers, not report data.
+      # Read-write: the only state the dashboard writes - allowlist rules,
+      # resolved-alert markers, and device names - not report data.
       - ./data:/data/state
 
     ports:

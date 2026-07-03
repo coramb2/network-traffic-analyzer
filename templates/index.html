@@ -193,6 +193,24 @@
     .rule-row .rule-detail { flex: 1; color: var(--muted); }
     .rule-row .rule-detail strong { color: var(--text); }
     .updated-at { color: var(--muted); font-size: 0.85rem; }
+    .ip-sub { color: var(--muted); font-size: 0.8rem; font-family: monospace; }
+    .devices-table td, .devices-table th { vertical-align: middle; }
+    .device-name-input {
+        width: 100%;
+        max-width: 220px;
+        padding: 6px 8px;
+        border-radius: 4px;
+        border: 1px solid var(--card-border);
+        background: var(--bg);
+        color: var(--text);
+    }
+    .suggest-chip {
+        cursor: pointer;
+        color: var(--accent);
+        font-size: 0.82rem;
+        text-decoration: underline dotted;
+    }
+    .suggest-chip:hover { color: var(--pink); }
 </style>
 </head>
 <body>
@@ -247,6 +265,22 @@
     </div>
 
     <div class="panel">
+        <h2>Devices</h2>
+        <p class="updated-at" style="margin-top:0;">
+            Give the IPs on your network friendly names. Suggestions come from reverse DNS.
+        </p>
+        <table class="devices-table">
+            <thead>
+                <tr><th>Device</th><th>Suggestion</th><th>Name</th><th></th></tr>
+            </thead>
+            <tbody id="devices-body"></tbody>
+        </table>
+        <div id="devices-empty" class="empty" style="display:none;">
+            No devices seen yet — run a capture and they'll appear here to name.
+        </div>
+    </div>
+
+    <div class="panel">
         <h2>Run History</h2>
         <table>
             <thead>
@@ -268,6 +302,39 @@ const COMMON_PORTS = {
 
 let protocolChart = null;
 let currentRunId = null;
+let deviceNames = {};  // ip -> friendly name, refreshed by loadDevices()
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+}
+
+function escapeRegex(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// IP shown as its friendly name (if set) with the raw IP kept as a subtitle.
+function ipLabelHtml(ip) {
+    const name = deviceNames[ip];
+    return name
+        ? `<strong>${escapeHtml(name)}</strong> <span class="ip-sub">${ip}</span>`
+        : `<span class="ip-sub">${ip}</span>`;
+}
+
+// Rewrite raw IPs inside an alert description to "Name (ip)" where named.
+// Longest IPs first + a non-IP-char lookahead so 192.168.1.4 doesn't match
+// inside 192.168.1.40.
+function annotateDesc(desc) {
+    let out = escapeHtml(desc);
+    Object.keys(deviceNames)
+        .sort((a, b) => b.length - a.length)
+        .forEach(ip => {
+            const re = new RegExp(escapeRegex(ip) + '(?![\\d.])', 'g');
+            out = out.replace(re, `${escapeHtml(deviceNames[ip])} (${ip})`);
+        });
+    return out;
+}
 
 function severityBadgeClass(severity) {
     return { HIGH: "high", MEDIUM: "medium", LOW: "low" }[severity] || "zero";
@@ -311,7 +378,9 @@ function renderTopTable(tbodyId, entries, isPort) {
     tbody.innerHTML = '';
     (entries || []).slice(0, 10).forEach(([key, count]) => {
         const tr = document.createElement('tr');
-        const label = isPort ? `${key} ${COMMON_PORTS[key] ? '(' + COMMON_PORTS[key] + ')' : ''}` : key;
+        const label = isPort
+            ? `${key} ${COMMON_PORTS[key] ? '(' + COMMON_PORTS[key] + ')' : ''}`
+            : ipLabelHtml(key);
         tr.innerHTML = `<td>${label}</td><td>${count}</td>`;
         tbody.appendChild(tr);
     });
@@ -360,7 +429,7 @@ function alertRowHtml(alert, runId, index) {
     return `
         <div class="alert-line ${resolvedCls}" data-alert-row="${key}">
             <span class="badge ${severityBadgeClass(alert.severity)}">${alert.severity}</span>
-            <span class="desc">${alert.description}${alert.resolved ? ' <em>(resolved)</em>' : ''}</span>
+            <span class="desc">${annotateDesc(alert.description)}${alert.resolved ? ' <em>(resolved)</em>' : ''}</span>
             <div class="alert-actions">
                 <button class="btn secondary"
                     data-action="${resolveAction}" data-run-id="${runId}" data-index="${index}">${resolveLabel}</button>
@@ -470,6 +539,52 @@ async function loadRules() {
     empty.style.display = rules.length ? 'none' : 'block';
 }
 
+function deviceRowHtml(dev) {
+    const suggestion = dev.hostname
+        ? `<span class="suggest-chip" data-action="use-suggestion" data-ip="${dev.ip}"
+                data-name="${escapeHtml(dev.hostname)}">${escapeHtml(dev.hostname)}</span>`
+        : '<span class="updated-at">—</span>';
+    const seen = dev.packet_count
+        ? `<span class="ip-sub">${dev.ip}</span> · ${dev.packet_count} pkts`
+        : `<span class="ip-sub">${dev.ip}</span>`;
+    return `
+        <tr data-device-ip="${dev.ip}">
+            <td>${seen}</td>
+            <td>${suggestion}</td>
+            <td><input class="device-name-input" type="text" value="${escapeHtml(dev.name || '')}"
+                       placeholder="Unnamed" data-ip="${dev.ip}"></td>
+            <td class="alert-actions">
+                <button class="btn" data-action="save-device" data-ip="${dev.ip}">Save</button>
+                ${dev.name ? `<button class="btn danger" data-action="remove-device" data-ip="${dev.ip}">Remove</button>` : ''}
+            </td>
+        </tr>
+    `;
+}
+
+async function loadDevices() {
+    const res = await fetch('/api/devices');
+    deviceNames = await res.json();
+
+    // Redraw anything that displays IPs so names apply immediately.
+    const seenRes = await fetch('/api/seen-devices');
+    const devices = await seenRes.json();
+
+    const tbody = document.getElementById('devices-body');
+    const empty = document.getElementById('devices-empty');
+    tbody.innerHTML = devices.map(deviceRowHtml).join('');
+    empty.style.display = devices.length ? 'none' : 'block';
+}
+
+async function saveDevice(ip, name) {
+    await fetch('/api/devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip, name }),
+    });
+    await loadDevices();
+    if (currentRunId) await showRunDetail(currentRunId);
+}
+
 async function submitAllowlist(runId, index, alertType, sourceIp, destPort, note, scopeIp, scopePort) {
     const body = {
         alert_type: alertType,
@@ -487,7 +602,9 @@ async function submitAllowlist(runId, index, alertType, sourceIp, destPort, note
 }
 
 document.addEventListener('click', async (e) => {
-    const btn = e.target.closest('button[data-action]');
+    // Any element with data-action, not just buttons: the reverse-DNS
+    // suggestion is a clickable <span>.
+    const btn = e.target.closest('[data-action]');
     if (!btn) return;
     const action = btn.dataset.action;
 
@@ -501,6 +618,14 @@ document.addEventListener('click', async (e) => {
         await fetch(`/api/rules/${encodeURIComponent(btn.dataset.ruleId)}`, { method: 'DELETE' });
         await loadRules();
         if (currentRunId) await showRunDetail(currentRunId);
+    } else if (action === 'save-device') {
+        const input = document.querySelector(`.device-name-input[data-ip="${btn.dataset.ip}"]`);
+        await saveDevice(btn.dataset.ip, input ? input.value : '');
+    } else if (action === 'remove-device') {
+        await saveDevice(btn.dataset.ip, '');
+    } else if (action === 'use-suggestion') {
+        const input = document.querySelector(`.device-name-input[data-ip="${btn.dataset.ip}"]`);
+        if (input) input.value = btn.dataset.name;
     } else if (action === 'show-allowlist-form') {
         const row = btn.closest('.alert-line');
         if (row.querySelector('.allowlist-form')) return; // already open
@@ -525,11 +650,14 @@ document.addEventListener('click', async (e) => {
     }
 });
 
-pollLive();
-setInterval(pollLive, 1500);
-loadRuns();
-setInterval(loadRuns, 15000);
-loadRules();
+// Load device names first so IPs render as friendly names from the start.
+loadDevices().finally(() => {
+    pollLive();
+    setInterval(pollLive, 1500);
+    loadRuns();
+    setInterval(loadRuns, 15000);
+    loadRules();
+});
 </script>
 </body>
 </html>
