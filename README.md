@@ -76,6 +76,16 @@ ip link show
 sudo venv/bin/python3 network_monitor.py -i eth0 -t 60 --html
 ```
 
+### PCAP Export / Import
+```bash
+# Also save raw packets alongside the usual reports, for Wireshark/tcpdump
+sudo venv/bin/python3 network_monitor.py -t 60 --pcap
+
+# Re-run analysis (including --alerts) against an existing capture instead
+# of live traffic - no root/capabilities needed, since nothing is sniffed
+venv/bin/python3 network_monitor.py -r existing_capture.pcap --html --alerts
+```
+
 ## 📊 Output Examples
 
 ### Real-Time Terminal Display
@@ -306,7 +316,7 @@ This project demonstrates understanding of:
 Potential additions:
 - [ ] Machine learning-based anomaly detection
 - [ ] GeoIP lookup for traffic origin mapping
-- [ ] PCAP file import/export
+- [x] PCAP file import/export
 - [ ] Real-time alerting (email/Slack/webhook)
 - [ ] Database storage for historical analysis
 - [x] Web-based dashboard

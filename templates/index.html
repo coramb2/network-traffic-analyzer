@@ -393,6 +393,9 @@ async function showRunDetail(runId) {
     if (data.has_csv) {
         html += `<a href="/api/runs/${data.run_id}/traffic_data.csv">Download CSV</a>`;
     }
+    if (data.has_pcap) {
+        html += `<a href="/api/runs/${data.run_id}/traffic_capture.pcap">Download PCAP</a>`;
+    }
 
     if (data.alerts && data.alerts.length > 0) {
         html += '<h2 style="margin-top:16px;">Alerts</h2><div id="alert-list">';

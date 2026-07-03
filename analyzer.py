@@ -6,6 +6,7 @@ Captures and analyzes network packets in real-time
 
 from scapy.all import sniff, IP, TCP, UDP, ICMP, Raw
 from scapy.layers import http
+from scapy.utils import PcapWriter
 from collections import defaultdict
 from datetime import datetime
 import json
@@ -32,11 +33,17 @@ class PacketAnalyzer:
         self.packets = []
         self.start_time = datetime.now()
         self.suspicious_activity = []
-        
+        self.pcap_writer = None
+
     def packet_callback(self, packet):
         """Process each captured packet"""
         self.packet_count += 1
-        
+
+        # Written regardless of protocol, so the .pcap is a faithful replay
+        # source even for packets analysis doesn't otherwise track (non-IP).
+        if self.pcap_writer is not None:
+            self.pcap_writer.write(packet)
+
         if IP in packet:
             src_ip = packet[IP].src
             dst_ip = packet[IP].dst
@@ -66,9 +73,15 @@ class PacketAnalyzer:
             
             self.protocol_stats[protocol] += 1
             
-            # Store packet info
+            # Store packet info. Use the packet's own capture timestamp
+            # (scapy sets this for both live and offline/.pcap-replay
+            # captures) rather than datetime.now() - otherwise a fast
+            # offline replay stamps every packet with nearly the same
+            # wall-clock time, badly distorting rate-based detection
+            # (PORT_SCAN, HIGH_CONNECTION_RATE) which depends on real gaps
+            # between packets.
             packet_info = {
-                'timestamp': datetime.now().isoformat(),
+                'timestamp': datetime.fromtimestamp(float(packet.time)).isoformat(),
                 'src_ip': src_ip,
                 'dst_ip': dst_ip,
                 'protocol': protocol,
@@ -193,17 +206,28 @@ class PacketAnalyzer:
             json.dump(snapshot, f, indent=2)
         os.chmod(resolved_path, 0o640)
 
-    def start_capture(self, packet_count=0, timeout=None, filter_str=None):
-        """Start capturing packets"""
+    def start_capture(self, packet_count=0, timeout=None, filter_str=None, pcap_out=None, read_pcap=None):
+        """Start capturing packets, or replay them from an existing .pcap file
+        (read_pcap) instead of a live interface - useful for offline analysis
+        of a capture taken elsewhere, or for testing without root/capabilities."""
         console.print(f"[bold cyan]Starting packet capture...[/bold cyan]")
-        console.print(f"Interface: {self.interface or 'default'}")
+        if read_pcap:
+            console.print(f"Reading from: {read_pcap}")
+        else:
+            console.print(f"Interface: {self.interface or 'default'}")
         console.print(f"Filter: {filter_str or 'none'}")
         console.print("[yellow]Press Ctrl+C to stop capture[/yellow]\n")
-        
+
+        if pcap_out:
+            resolved_pcap_path = safe_output_path(pcap_out)
+            self.pcap_writer = PcapWriter(resolved_pcap_path, sync=True)
+            os.chmod(resolved_pcap_path, 0o640)
+
         try:
-            # Start packet capture in a separate thread
-            capture_thread = threading.Thread(
-                target=lambda: sniff(
+            if read_pcap:
+                sniff_kwargs = dict(offline=read_pcap, prn=self.packet_callback, filter=filter_str, store=False)
+            else:
+                sniff_kwargs = dict(
                     iface=self.interface,
                     prn=self.packet_callback,
                     count=packet_count,
@@ -211,10 +235,12 @@ class PacketAnalyzer:
                     filter=filter_str,
                     store=False
                 )
-            )
+
+            # Start packet capture in a separate thread
+            capture_thread = threading.Thread(target=lambda: sniff(**sniff_kwargs))
             capture_thread.daemon = True
             capture_thread.start()
-            
+
             # Live display update
             with Live(self.generate_display_table(), refresh_per_second=2) as live:
                 last_snapshot = 0
@@ -237,6 +263,9 @@ class PacketAnalyzer:
             console.print("[yellow]Try running with: sudo python3 analyzer.py[/yellow]")
         except Exception as e:
             console.print(f"[red]Error during capture: {str(e)}[/red]")
+        finally:
+            if self.pcap_writer is not None:
+                self.pcap_writer.close()
 
 
 if __name__ == "__main__":
@@ -248,14 +277,18 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--timeout', type=int, help='Capture timeout in seconds')
     parser.add_argument('-f', '--filter', help='BPF filter string (e.g., "tcp port 80")')
     parser.add_argument('-o', '--output', default='traffic_analysis.json', help='Output JSON file')
-    
+    parser.add_argument('--pcap', action='store_true', help='Also save raw packets to traffic_capture.pcap')
+    parser.add_argument('-r', '--read-pcap', help='Analyze an existing .pcap file instead of capturing live traffic')
+
     args = parser.parse_args()
-    
+
     analyzer = PacketAnalyzer(interface=args.interface)
     analyzer.start_capture(
         packet_count=args.count,
         timeout=args.timeout,
-        filter_str=args.filter
+        filter_str=args.filter,
+        pcap_out='traffic_capture.pcap' if args.pcap else None,
+        read_pcap=args.read_pcap
     )
     
     # Export results
