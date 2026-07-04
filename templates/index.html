@@ -202,6 +202,7 @@
     .outcome-badge.mitigated { background: var(--accent-2); }
     .outcome-badge.investigating { background: #fb923c; }
     .outcome-badge.threat { background: var(--none); box-shadow: 0 0 8px rgba(251, 113, 133, 0.5); }
+    .outcome-badge.resolved-generic { background: var(--idle); }
     .alert-details {
         width: 100%;
         margin-top: 8px;
@@ -535,9 +536,10 @@ function alertDetailsHtml(alert) {
     return pb + fw;
 }
 
-function resolveFormHtml() {
+function resolveFormHtml(idx) {
+    const group = `outcome-${idx}`;  // unique per row so multiple open forms don't share a radio group
     const options = OUTCOMES.map(o => `
-        <label><input type="radio" name="outcome" value="${o.value}"> ${o.label}</label>
+        <label><input type="radio" name="${group}" value="${o.value}"> ${o.label}</label>
     `).join('');
     return `
         <div class="outcome-options">${options}</div>
@@ -558,7 +560,7 @@ function alertRowHtml(alert, runId, index) {
     return `
         <div class="alert-line ${resolvedCls}" data-alert-row="${key}">
             <span class="badge ${severityBadgeClass(alert.severity)}">${alert.severity}</span>
-            <span class="desc">${annotateDesc(alert.description)}${outcomeBadgeHtml(alert.outcome)}</span>
+            <span class="desc">${annotateDesc(alert.description)}${alert.resolved && !alert.outcome ? ' <span class="outcome-badge resolved-generic">Resolved</span>' : outcomeBadgeHtml(alert.outcome)}</span>
             <div class="alert-actions">
                 <button class="btn secondary"
                     data-action="toggle-details" data-run-id="${runId}" data-index="${index}" data-type="${alert.type}">Details</button>
@@ -775,13 +777,29 @@ document.addEventListener('click', async (e) => {
         details.innerHTML = alert ? alertDetailsHtml(alert) : '<div class="empty">No details available.</div>';
         row.appendChild(details);
     } else if (action === 'copy-command') {
-        try {
-            await navigator.clipboard.writeText(btn.dataset.command);
-            const original = btn.textContent;
-            btn.textContent = 'Copied!';
-            setTimeout(() => { btn.textContent = original; }, 1500);
-        } catch (e) {
-            // Clipboard API may be unavailable (e.g. non-HTTPS context) — no-op.
+        const flash = (msg) => {
+            if (!btn.dataset.orig) btn.dataset.orig = btn.textContent;
+            btn.textContent = msg;
+            clearTimeout(btn._t);
+            btn._t = setTimeout(() => { btn.textContent = btn.dataset.orig; }, 1500);
+        };
+        // navigator.clipboard only works in a secure context (HTTPS / localhost),
+        // not over a plain-http tailnet URL. Fall back to selecting the command
+        // text and execCommand so Copy still works there.
+        if (window.isSecureContext && navigator.clipboard) {
+            try { await navigator.clipboard.writeText(btn.dataset.command); flash('Copied!'); return; }
+            catch (e) { /* fall through to manual selection */ }
+        }
+        const code = btn.closest('.fw-suggestion')?.querySelector('code');
+        if (code) {
+            const sel = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(code);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            let ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) {}
+            flash(ok ? 'Copied!' : 'Selected — press Ctrl+C');
         }
     } else if (action === 'show-resolve-form') {
         const row = btn.closest('.alert-line');
@@ -789,11 +807,11 @@ document.addEventListener('click', async (e) => {
         const { runId, index } = btn.dataset;
         const form = document.createElement('div');
         form.className = 'resolve-form';
-        form.innerHTML = resolveFormHtml();
+        form.innerHTML = resolveFormHtml(index);
         row.appendChild(form);
         form.querySelector('[data-cancel]').addEventListener('click', () => form.remove());
         form.querySelector('[data-confirm]').addEventListener('click', async () => {
-            const checked = form.querySelector('input[name="outcome"]:checked');
+            const checked = form.querySelector('input[type="radio"]:checked');
             const note = form.querySelector('.note-input').value;
             await submitResolve(runId, index, checked ? checked.value : null, note);
         });
