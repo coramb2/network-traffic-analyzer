@@ -8,7 +8,7 @@ WORKDIR /app
 COPY requirements-dashboard.txt .
 RUN pip install --no-cache-dir -r requirements-dashboard.txt
 
-COPY webapp.py alert_rules.py device_names.py ./
+COPY webapp.py alert_rules.py alert_playbooks.py device_names.py ./
 COPY templates ./templates
 COPY static ./static
 

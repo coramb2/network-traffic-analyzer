@@ -13,6 +13,12 @@ import os
 import uuid
 from datetime import datetime, timezone
 
+# Structured outcomes recorded alongside a resolution. "investigating" is
+# the one outcome that still counts as an open/unresolved alert (see
+# webapp.run_summary) - it means work is in progress, not done.
+OUTCOMES = {"known", "false_positive", "benign", "mitigated", "investigating", "threat"}
+OPEN_OUTCOMES = {"investigating"}
+
 
 def _state_path():
     return os.environ.get("ALERT_STATE_PATH", "alert_state.json")
@@ -77,17 +83,18 @@ def remove_rule(rule_id):
     return len(data["allowlist"]) != before
 
 
-def mark_resolved(alert_key, note=""):
+def mark_resolved(alert_key, note="", outcome=None):
     data = load_state()
-    if not any(r["alert_key"] == alert_key for r in data["resolved"]):
-        data["resolved"].append(
-            {
-                "alert_key": alert_key,
-                "resolved_at": datetime.now(timezone.utc).isoformat(),
-                "note": note,
-            }
-        )
-        save_state(data)
+    data["resolved"] = [r for r in data["resolved"] if r["alert_key"] != alert_key]
+    data["resolved"].append(
+        {
+            "alert_key": alert_key,
+            "resolved_at": datetime.now(timezone.utc).isoformat(),
+            "note": note,
+            "outcome": outcome,
+        }
+    )
+    save_state(data)
     return data["resolved"]
 
 
@@ -99,3 +106,16 @@ def unmark_resolved(alert_key):
 
 def resolved_keys(resolved_entries):
     return {r["alert_key"] for r in resolved_entries}
+
+
+def closed_keys(resolved_entries):
+    """Resolved alert keys that don't need to stay visible as open items.
+
+    An alert resolved with outcome "investigating" is still in progress, so
+    it's excluded here and continues to count toward unresolved_count.
+    """
+    return {r["alert_key"] for r in resolved_entries if r.get("outcome") not in OPEN_OUTCOMES}
+
+
+def resolved_by_key(resolved_entries):
+    return {r["alert_key"]: r for r in resolved_entries}
