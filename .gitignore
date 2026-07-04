@@ -38,6 +38,13 @@ env/
 # Local config (real interface names, ports, etc.) - never the template
 .env
 
+# Local-only compose override (e.g. WSL host-networking workaround)
+docker-compose.override.yml
+
+# Raw packet captures - sensitive, can be large. reports/ already covers
+# the in-run ones; this also catches a stray --pcap run at the repo root.
+*.pcap
+
 # Generated reports and dashboard state - the actual runtime directories,
 # not just their current file types, so a future new file extension in
 # either doesn't accidentally end up trackable.
