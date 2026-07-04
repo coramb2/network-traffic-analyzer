@@ -179,6 +179,55 @@
         background: var(--bg);
         color: var(--text);
     }
+    .resolve-form { width: 100%; margin-top: 6px; padding: 10px; border-radius: 6px;
+        background: rgba(168, 110, 247, 0.08); border: 1px solid var(--card-border);
+        display: flex; flex-direction: column; gap: 8px; }
+    .resolve-form .outcome-options { display: flex; gap: 6px; flex-wrap: wrap; }
+    .resolve-form .outcome-options label { display: flex; align-items: center; gap: 4px;
+        padding: 5px 10px; border-radius: 999px; border: 1px solid var(--card-border);
+        font-size: 0.82rem; cursor: pointer; }
+    .resolve-form .outcome-options input { margin: 0; }
+    .resolve-form input[type="text"] {
+        padding: 6px 8px; border-radius: 4px; border: 1px solid var(--card-border);
+        background: var(--bg); color: var(--text);
+    }
+    .resolve-form .form-actions { display: flex; gap: 8px; }
+    .outcome-badge {
+        display: inline-block; padding: 2px 10px; border-radius: 999px;
+        font-size: 0.78rem; font-weight: 600; color: white;
+    }
+    .outcome-badge.known { background: var(--accent); }
+    .outcome-badge.false_positive { background: var(--idle); }
+    .outcome-badge.benign { background: #34d399; }
+    .outcome-badge.mitigated { background: var(--accent-2); }
+    .outcome-badge.investigating { background: #fb923c; }
+    .outcome-badge.threat { background: var(--none); box-shadow: 0 0 8px rgba(251, 113, 133, 0.5); }
+    .alert-details {
+        width: 100%;
+        margin-top: 8px;
+        padding: 12px;
+        border-radius: 6px;
+        background: rgba(56, 189, 248, 0.05);
+        border: 1px solid var(--card-border);
+        font-size: 0.85rem;
+    }
+    .alert-details h4 { margin: 0 0 6px 0; font-size: 0.9rem; color: var(--text); }
+    .alert-details .pb-section { margin-bottom: 10px; }
+    .alert-details .pb-label { color: var(--muted); font-weight: 600; font-size: 0.78rem;
+        text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 2px; }
+    .alert-details ol { margin: 4px 0 0 0; padding-left: 20px; }
+    .alert-details li { margin-bottom: 4px; }
+    .fw-suggestion {
+        display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+        flex-wrap: wrap;
+    }
+    .fw-suggestion .fw-label { min-width: 220px; color: var(--muted); font-size: 0.8rem; }
+    .fw-suggestion code {
+        flex: 1; min-width: 200px; padding: 4px 8px; border-radius: 4px;
+        background: var(--bg); border: 1px solid var(--border); font-size: 0.8rem;
+        overflow-x: auto; white-space: pre;
+    }
+    .copy-btn { padding: 4px 10px; font-size: 0.78rem; margin: 0; }
     .rules-list { display: flex; flex-direction: column; gap: 8px; }
     .rule-row {
         display: flex;
@@ -300,9 +349,20 @@ const COMMON_PORTS = {
     27017: "MongoDB", 6379: "Redis"
 };
 
+const OUTCOMES = [
+    { value: 'known', label: 'Known' },
+    { value: 'false_positive', label: 'False Positive' },
+    { value: 'benign', label: 'Benign' },
+    { value: 'mitigated', label: 'Mitigated' },
+    { value: 'investigating', label: 'Investigating' },
+    { value: 'threat', label: 'Threat' },
+];
+const OUTCOME_LABELS = Object.fromEntries(OUTCOMES.map(o => [o.value, o.label]));
+
 let protocolChart = null;
 let currentRunId = null;
 let deviceNames = {};  // ip -> friendly name, refreshed by loadDevices()
+let playbooks = {};    // alert type -> playbook, loaded once via loadPlaybooks()
 
 function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => (
@@ -421,18 +481,88 @@ async function pollLive() {
     }
 }
 
+function outcomeBadgeHtml(outcome) {
+    if (!outcome) return '';
+    const label = OUTCOME_LABELS[outcome] || outcome;
+    return ` <span class="outcome-badge ${outcome}">${label}</span>`;
+}
+
+function playbookSectionHtml(alertType) {
+    const pb = playbooks[alertType];
+    if (!pb) return '';
+    const steps = (pb.steps || []).map(s => `<li>${escapeHtml(s)}</li>`).join('');
+    return `
+        <div class="pb-section">
+            <div class="pb-label">What this means</div>
+            <div>${escapeHtml(pb.what)}</div>
+        </div>
+        <div class="pb-section">
+            <div class="pb-label">Likely benign if…</div>
+            <div>${escapeHtml(pb.benign)}</div>
+        </div>
+        <div class="pb-section">
+            <div class="pb-label">Worth investigating if…</div>
+            <div>${escapeHtml(pb.concerning)}</div>
+        </div>
+        <div class="pb-section">
+            <div class="pb-label">Suggested steps</div>
+            <ol>${steps}</ol>
+        </div>
+    `;
+}
+
+function firewallSuggestionsHtml(suggestions) {
+    if (!suggestions || !suggestions.length) return '';
+    const rows = suggestions.map(s => `
+        <div class="fw-suggestion">
+            <span class="fw-label">${escapeHtml(s.label)}</span>
+            <code>${escapeHtml(s.command)}</code>
+            <button class="btn secondary copy-btn" data-action="copy-command" data-command="${escapeHtml(s.command)}">Copy</button>
+        </div>
+    `).join('');
+    return `
+        <div class="pb-section">
+            <div class="pb-label">Firewall suggestions (apply manually — not run automatically)</div>
+            ${rows}
+        </div>
+    `;
+}
+
+function alertDetailsHtml(alert) {
+    const pb = playbookSectionHtml(alert.type);
+    const fw = firewallSuggestionsHtml(alert.firewall_suggestions);
+    if (!pb && !fw) return '<div class="empty">No additional guidance for this alert type.</div>';
+    return pb + fw;
+}
+
+function resolveFormHtml() {
+    const options = OUTCOMES.map(o => `
+        <label><input type="radio" name="outcome" value="${o.value}"> ${o.label}</label>
+    `).join('');
+    return `
+        <div class="outcome-options">${options}</div>
+        <input type="text" class="note-input" placeholder="Note (optional)">
+        <div class="form-actions">
+            <button class="btn" data-confirm="1">Confirm</button>
+            <button class="btn secondary" data-cancel="1">Cancel</button>
+        </div>
+    `;
+}
+
 function alertRowHtml(alert, runId, index) {
     const key = alert.alert_key || `${runId}:${index}`;
     const resolvedCls = alert.resolved ? 'resolved' : '';
-    const resolveLabel = alert.resolved ? 'Un-resolve' : 'Resolve';
-    const resolveAction = alert.resolved ? 'unresolve' : 'resolve';
+    const resolveControl = alert.resolved
+        ? `<button class="btn secondary" data-action="unresolve" data-run-id="${runId}" data-index="${index}">Un-resolve</button>`
+        : `<button class="btn secondary" data-action="show-resolve-form" data-run-id="${runId}" data-index="${index}">Resolve</button>`;
     return `
         <div class="alert-line ${resolvedCls}" data-alert-row="${key}">
             <span class="badge ${severityBadgeClass(alert.severity)}">${alert.severity}</span>
-            <span class="desc">${annotateDesc(alert.description)}${alert.resolved ? ' <em>(resolved)</em>' : ''}</span>
+            <span class="desc">${annotateDesc(alert.description)}${outcomeBadgeHtml(alert.outcome)}</span>
             <div class="alert-actions">
                 <button class="btn secondary"
-                    data-action="${resolveAction}" data-run-id="${runId}" data-index="${index}">${resolveLabel}</button>
+                    data-action="toggle-details" data-run-id="${runId}" data-index="${index}" data-type="${alert.type}">Details</button>
+                ${resolveControl}
                 <button class="btn secondary"
                     data-action="show-allowlist-form" data-run-id="${runId}" data-index="${index}"
                     data-type="${alert.type}" data-source-ip="${alert.source_ip || ''}"
@@ -441,6 +571,8 @@ function alertRowHtml(alert, runId, index) {
         </div>
     `;
 }
+
+let currentAlerts = [];  // alerts for currentRunId, by index — lets toggle-details avoid a refetch
 
 async function showRunDetail(runId) {
     currentRunId = runId;
@@ -454,6 +586,7 @@ async function showRunDetail(runId) {
         return;
     }
     const data = await res.json();
+    currentAlerts = data.alerts || [];
 
     let html = `<h2>Run ${data.run_id}</h2>`;
     if (data.has_html) {
@@ -585,6 +718,21 @@ async function saveDevice(ip, name) {
     if (currentRunId) await showRunDetail(currentRunId);
 }
 
+async function loadPlaybooks() {
+    const res = await fetch('/api/playbooks');
+    playbooks = await res.json();
+}
+
+async function submitResolve(runId, index, outcome, note) {
+    await fetch(`/api/runs/${encodeURIComponent(runId)}/alerts/${index}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcome: outcome || null, note: note || '' }),
+    });
+    await showRunDetail(runId);
+    await loadRuns();
+}
+
 async function submitAllowlist(runId, index, alertType, sourceIp, destPort, note, scopeIp, scopePort) {
     const body = {
         alert_type: alertType,
@@ -608,12 +756,47 @@ document.addEventListener('click', async (e) => {
     if (!btn) return;
     const action = btn.dataset.action;
 
-    if (action === 'resolve' || action === 'unresolve') {
+    if (action === 'unresolve') {
         const runId = btn.dataset.runId;
         const index = btn.dataset.index;
-        await fetch(`/api/runs/${encodeURIComponent(runId)}/alerts/${index}/${action}`, { method: 'POST' });
+        await fetch(`/api/runs/${encodeURIComponent(runId)}/alerts/${index}/unresolve`, { method: 'POST' });
         await showRunDetail(runId);
         await loadRuns();
+    } else if (action === 'toggle-details') {
+        const row = btn.closest('.alert-line');
+        let details = row.querySelector('.alert-details');
+        if (details) {
+            details.remove();
+            return;
+        }
+        const alert = currentAlerts[Number(btn.dataset.index)];
+        details = document.createElement('div');
+        details.className = 'alert-details';
+        details.innerHTML = alert ? alertDetailsHtml(alert) : '<div class="empty">No details available.</div>';
+        row.appendChild(details);
+    } else if (action === 'copy-command') {
+        try {
+            await navigator.clipboard.writeText(btn.dataset.command);
+            const original = btn.textContent;
+            btn.textContent = 'Copied!';
+            setTimeout(() => { btn.textContent = original; }, 1500);
+        } catch (e) {
+            // Clipboard API may be unavailable (e.g. non-HTTPS context) — no-op.
+        }
+    } else if (action === 'show-resolve-form') {
+        const row = btn.closest('.alert-line');
+        if (row.querySelector('.resolve-form')) return; // already open
+        const { runId, index } = btn.dataset;
+        const form = document.createElement('div');
+        form.className = 'resolve-form';
+        form.innerHTML = resolveFormHtml();
+        row.appendChild(form);
+        form.querySelector('[data-cancel]').addEventListener('click', () => form.remove());
+        form.querySelector('[data-confirm]').addEventListener('click', async () => {
+            const checked = form.querySelector('input[name="outcome"]:checked');
+            const note = form.querySelector('.note-input').value;
+            await submitResolve(runId, index, checked ? checked.value : null, note);
+        });
     } else if (action === 'delete-rule') {
         await fetch(`/api/rules/${encodeURIComponent(btn.dataset.ruleId)}`, { method: 'DELETE' });
         await loadRules();
@@ -657,6 +840,7 @@ loadDevices().finally(() => {
     loadRuns();
     setInterval(loadRuns, 15000);
     loadRules();
+    loadPlaybooks();
 });
 </script>
 </body>

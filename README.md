@@ -274,6 +274,35 @@ separate from `./reports`: the dashboard needs read-write access to manage
 it, while the capture container only ever reads it (mounted `:ro` there)
 to know what to suppress.
 
+### Alert Resolution Pathways
+
+Clicking **Details** on an alert expands a per-type playbook (`alert_playbooks.py`)
+covering what the alert means, signs it's likely benign vs. worth a closer
+look, and a short list of concrete next steps - written for a home-network
+setting rather than an enterprise SOC.
+
+Resolving an alert now records a structured **outcome** alongside the
+optional note, not just a bare acknowledgment:
+
+- `known` - expected traffic you recognize
+- `false_positive` - not real activity of that kind
+- `benign` - real, but not a concern
+- `mitigated` - you took action (blocked it, closed the port, etc.)
+- `investigating` - still looking into it
+- `threat` - confirmed something bad
+
+Every outcome except `investigating` removes the alert from the open/unresolved
+count - `investigating` is meant to stay visible as an in-progress item until
+you resolve it again with a final outcome. The outcome shows as a badge next
+to the alert going forward.
+
+For alerts with a source IP and/or destination port (port scans, high
+connection rate, suspicious port access), the details view also suggests
+matching firewall rules in a few formats (`ufw`, `iptables`, `nftables`) plus
+a plain-English description of what to do on your router, each with a
+**Copy** button. These are suggestions only - nothing here is ever applied
+automatically; you decide whether and how to act on them.
+
 ### Device Names
 
 Raw IPs are hard to reason about ("port scan from 192.168.1.47" — which
@@ -337,6 +366,7 @@ Potential additions:
 - [ ] Real-time alerting (email/Slack/webhook)
 - [ ] Database storage for historical analysis
 - [x] Web-based dashboard
+- [x] Alert resolution pathways (playbooks, structured outcomes, firewall suggestions)
 
 ## 📝 License
 

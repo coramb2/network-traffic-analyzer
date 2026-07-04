@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from flask import Flask, abort, jsonify, render_template, request, send_from_directory
 
+import alert_playbooks
 import alert_rules
 import device_names
 
@@ -85,8 +86,8 @@ def run_summary(run_id):
 
     alerts_data = read_json(os.path.join(run_dir, "security_alerts.json"))
     alert_list = alerts_data.get("alerts", []) if alerts_data else []
-    resolved = alert_rules.resolved_keys(alert_rules.load_state()["resolved"])
-    unresolved_count = sum(1 for i in range(len(alert_list)) if f"{run_id}:{i}" not in resolved)
+    closed = alert_rules.closed_keys(alert_rules.load_state()["resolved"])
+    unresolved_count = sum(1 for i in range(len(alert_list)) if f"{run_id}:{i}" not in closed)
 
     return {
         "run_id": run_id,
@@ -152,12 +153,20 @@ def api_run_detail(run_id):
 
     alerts_data = read_json(os.path.join(run_dir, "security_alerts.json"))
     alert_list = alerts_data.get("alerts", []) if alerts_data else []
-    resolved = alert_rules.resolved_keys(alert_rules.load_state()["resolved"])
+    resolved_by_key = alert_rules.resolved_by_key(alert_rules.load_state()["resolved"])
 
     annotated_alerts = []
     for i, alert in enumerate(alert_list):
         alert_key = f"{run_id}:{i}"
-        annotated_alerts.append({**alert, "alert_key": alert_key, "resolved": alert_key in resolved})
+        entry = resolved_by_key.get(alert_key)
+        annotated_alerts.append({
+            **alert,
+            "alert_key": alert_key,
+            "resolved": entry is not None,
+            "outcome": entry.get("outcome") if entry else None,
+            "resolution_note": entry.get("note") if entry else None,
+            "firewall_suggestions": alert_playbooks.firewall_suggestions(alert),
+        })
 
     return jsonify(
         {
@@ -208,7 +217,10 @@ def api_rule_delete(rule_id):
 def api_alert_resolve(run_id, index):
     safe_run_dir(run_id)  # validates run_id, 404s on bad/unknown runs
     body = request.get_json(silent=True) or {}
-    resolved = alert_rules.mark_resolved(f"{run_id}:{index}", note=body.get("note", ""))
+    outcome = body.get("outcome")
+    if outcome is not None and outcome not in alert_rules.OUTCOMES:
+        abort(400)
+    resolved = alert_rules.mark_resolved(f"{run_id}:{index}", note=body.get("note", ""), outcome=outcome)
     return jsonify(resolved)
 
 
@@ -217,6 +229,11 @@ def api_alert_unresolve(run_id, index):
     safe_run_dir(run_id)
     alert_rules.unmark_resolved(f"{run_id}:{index}")
     return "", 204
+
+
+@app.route("/api/playbooks")
+def api_playbooks():
+    return jsonify(alert_playbooks.PLAYBOOKS)
 
 
 @app.route("/api/devices", methods=["GET", "POST"])
