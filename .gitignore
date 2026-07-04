@@ -66,4 +66,3 @@ Thumbs.db
 # Test data
 test_captures/
 pcap_files/
-docker-compose.override.yml
