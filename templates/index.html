@@ -312,6 +312,15 @@
     </div>
 
     <div class="panel">
+        <h2>Traffic Trend</h2>
+        <p class="updated-at" style="margin-top:0;">Packets/sec and alert count across recent runs, oldest to newest.</p>
+        <div style="position: relative; height: 240px;">
+            <canvas id="trendChart"></canvas>
+        </div>
+        <div id="trend-empty" class="empty" style="display:none;">Not enough completed runs yet to show a trend.</div>
+    </div>
+
+    <div class="panel">
         <h2>Alert Rules (Allowlist)</h2>
         <div class="rules-list" id="rules-list"></div>
         <div id="rules-empty" class="empty" style="display:none;">
@@ -366,6 +375,7 @@ const OUTCOMES = [
 const OUTCOME_LABELS = Object.fromEntries(OUTCOMES.map(o => [o.value, o.label]));
 
 let protocolChart = null;
+let trendChart = null;
 let currentRunId = null;
 let deviceNames = {};  // ip -> friendly name, refreshed by loadDevices()
 let playbooks = {};    // alert type -> playbook, loaded once via loadPlaybooks()
@@ -436,6 +446,95 @@ function updateProtocolChart(protocolStats) {
         protocolChart.data.labels = labels;
         protocolChart.data.datasets[0].data = values;
         protocolChart.update();
+    }
+}
+
+function fmtRunLabel(run) {
+    // run_id is "YYYYMMDDTHHMMSSZ" - show just "MM/DD HH:MM" for chart labels.
+    const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})\d{2}Z$/.exec(run.run_id || '');
+    if (!m) return run.run_id || '';
+    const [, , month, day, hour, minute] = m;
+    return `${month}/${day} ${hour}:${minute}`;
+}
+
+// Pure data transform, kept separate from the Chart.js call so it can be
+// exercised directly (e.g. from a browser console/test) without a canvas.
+// runs comes from /api/runs, newest-first; the trend reads left-to-right
+// as oldest-to-newest, so it's reversed here.
+function buildTrendChartData(runs) {
+    const chronological = [...(runs || [])].reverse();
+    return {
+        labels: chronological.map(fmtRunLabel),
+        pps: chronological.map(r => r.packets_per_second ?? 0),
+        alerts: chronological.map(r => r.unresolved_count ?? r.alert_count ?? 0),
+    };
+}
+
+function updateTrendChart(runs) {
+    const canvas = document.getElementById('trendChart');
+    const empty = document.getElementById('trend-empty');
+
+    if (!runs || runs.length < 2) {
+        canvas.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+    }
+    canvas.style.display = 'block';
+    empty.style.display = 'none';
+
+    const { labels, pps, alerts } = buildTrendChartData(runs);
+
+    if (!trendChart) {
+        const ctx = canvas.getContext('2d');
+        trendChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Packets/sec',
+                        data: pps,
+                        borderColor: '#38bdf8',
+                        backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                        yAxisID: 'y',
+                        tension: 0.25,
+                        fill: true,
+                    },
+                    {
+                        label: 'Open alerts',
+                        data: alerts,
+                        borderColor: '#fb7185',
+                        backgroundColor: 'rgba(251, 113, 133, 0.15)',
+                        yAxisID: 'y1',
+                        tension: 0.25,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: { legend: { position: 'top', labels: { color: '#ece7ff' } } },
+                scales: {
+                    x: { ticks: { color: '#9a94bd' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+                    y: {
+                        position: 'left', beginAtZero: true,
+                        ticks: { color: '#38bdf8' }, grid: { color: 'rgba(255,255,255,0.06)' },
+                        title: { display: true, text: 'Packets/sec', color: '#38bdf8' },
+                    },
+                    y1: {
+                        position: 'right', beginAtZero: true,
+                        ticks: { color: '#fb7185', precision: 0 }, grid: { drawOnChartArea: false },
+                        title: { display: true, text: 'Open alerts', color: '#fb7185' },
+                    },
+                },
+            },
+        });
+    } else {
+        trendChart.data.labels = labels;
+        trendChart.data.datasets[0].data = pps;
+        trendChart.data.datasets[1].data = alerts;
+        trendChart.update();
     }
 }
 
@@ -620,6 +719,8 @@ async function showRunDetail(runId) {
 async function loadRuns() {
     const res = await fetch('/api/runs');
     const runs = await res.json();
+
+    updateTrendChart(runs);
 
     const tbody = document.getElementById('runs-body');
     const empty = document.getElementById('runs-empty');
