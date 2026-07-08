@@ -150,10 +150,13 @@ Examples:
                 console.print(f"[green]✓[/green] Resolved {len(hostnames)} hostname(s)")
 
         # Prepare analyzer data for reporting
+        report_duration_seconds = (datetime.now() - analyzer.start_time).seconds
         analyzer_data = {
             'analysis_time': datetime.now().isoformat(),
-            'duration_seconds': (datetime.now() - analyzer.start_time).seconds,
+            'duration_seconds': report_duration_seconds,
             'total_packets': analyzer.packet_count,
+            'interface': analyzer.interface or 'default',
+            'packets_per_second': round(analyzer.packet_count / max(report_duration_seconds, 1), 2),
             'protocol_stats': dict(analyzer.protocol_stats),
             'top_ips': dict(sorted(analyzer.ip_stats.items(),
                                   key=lambda x: x[1], reverse=True)[:20]),

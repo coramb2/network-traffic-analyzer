@@ -339,7 +339,7 @@
         <h2>Run History</h2>
         <table>
             <thead>
-                <tr><th>Run</th><th>Packets</th><th>Duration</th><th>Alerts</th></tr>
+                <tr><th>Run</th><th>Interface</th><th>Packets</th><th>Pkt/s</th><th>Duration</th><th>Alerts</th></tr>
             </thead>
             <tbody id="runs-body"></tbody>
         </table>
@@ -475,9 +475,9 @@ async function pollLive() {
             dot.classList.add('idle');
             text.textContent = 'Idle — showing last completed run';
             document.getElementById('stat-packets').textContent = data.total_packets ?? '–';
-            document.getElementById('stat-pps').textContent = '–';
+            document.getElementById('stat-pps').textContent = data.packets_per_second ?? '–';
             document.getElementById('stat-runtime').textContent = fmtDuration(data.duration_seconds);
-            document.getElementById('stat-interface').textContent = '–';
+            document.getElementById('stat-interface').textContent = data.interface || 'default';
             updateProtocolChart(data.protocol_stats);
         } else {
             text.textContent = 'No capture data yet';
@@ -646,7 +646,9 @@ async function loadRuns() {
         }
         tr.innerHTML = `
             <td>${run.run_id}</td>
+            <td>${escapeHtml(run.interface || 'default')}</td>
             <td>${run.total_packets}</td>
+            <td>${run.packets_per_second ?? '–'}</td>
             <td>${fmtDuration(run.duration_seconds)}</td>
             <td>${alertBadge}</td>
         `;

@@ -183,6 +183,10 @@ def run_summary(run_id):
         "analysis_time": analysis.get("analysis_time"),
         "duration_seconds": analysis.get("duration_seconds", 0),
         "total_packets": analysis.get("total_packets", 0),
+        # .get() with a default: runs captured before this field existed
+        # won't have it in their stored traffic_analysis.json.
+        "interface": analysis.get("interface", "default"),
+        "packets_per_second": analysis.get("packets_per_second", 0),
         "protocol_stats": analysis.get("protocol_stats", {}),
         "alert_count": len(alert_list),
         "unresolved_count": unresolved_count,

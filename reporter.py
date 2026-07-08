@@ -31,8 +31,10 @@ class TrafficReporter:
         report_lines.append("NETWORK TRAFFIC ANALYSIS REPORT")
         report_lines.append("=" * 70)
         report_lines.append(f"\nGenerated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        report_lines.append(f"Interface: {self.analyzer_data.get('interface', 'default')}")
         report_lines.append(f"Analysis Period: {self.analyzer_data.get('duration_seconds', 0)} seconds")
         report_lines.append(f"Total Packets Captured: {self.analyzer_data.get('total_packets', 0)}")
+        report_lines.append(f"Average Rate: {self.analyzer_data.get('packets_per_second', 0)} packets/sec")
         
         # Protocol Statistics
         report_lines.append("\n" + "-" * 70)
@@ -271,6 +273,14 @@ class TrafficReporter:
             <div class="stat-card">
                 <h3>Unique IPs</h3>
                 <p>{len(self.analyzer_data.get('top_ips', {}))}</p>
+            </div>
+            <div class="stat-card">
+                <h3>Interface</h3>
+                <p>{self.analyzer_data.get('interface', 'default')}</p>
+            </div>
+            <div class="stat-card">
+                <h3>Packets/sec</h3>
+                <p>{self.analyzer_data.get('packets_per_second', 0)}</p>
             </div>
         </div>
         

@@ -116,6 +116,20 @@ def test_export_to_json_writes_expected_fields(tmp_path):
     assert data["protocol_stats"]["TCP"] == 1
     assert data["hostnames"] == {"192.168.1.10": "laptop.lan"}
     assert len(data["recent_packets"]) == 1
+    # Regression: interface/packets_per_second used to be tracked live
+    # (export_live_snapshot) but silently dropped from the persisted report,
+    # so completed runs lost both once the capture ended.
+    assert data["interface"] == "eth0"
+    assert "packets_per_second" in data
+
+
+def test_export_to_json_defaults_interface_when_none_given(tmp_path):
+    analyzer = PacketAnalyzer()  # no interface specified
+    analyzer.packet_callback(tcp_packet())
+    analyzer.export_to_json("traffic_analysis.json")
+
+    data = json.loads((tmp_path / "traffic_analysis.json").read_text())
+    assert data["interface"] == "default"
 
 
 def test_export_to_json_sets_restricted_permissions(tmp_path):

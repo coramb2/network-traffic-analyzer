@@ -12,12 +12,18 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     monkeypatch.setenv("DEVICE_NAMES_PATH", str(tmp_path / "device_names.json"))
     monkeypatch.setenv("REPORTS_ROOT", str(tmp_path / "reports"))
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "test-password")
     (tmp_path / "reports").mkdir()
 
     import webapp
     importlib.reload(webapp)
     webapp.app.config["TESTING"] = True
     with webapp.app.test_client() as c:
+        # Every route except /login and static assets requires a session
+        # since the dashboard-auth feature landed - log straight in rather
+        # than going through the login form/throttle.
+        with c.session_transaction() as sess:
+            sess["authenticated"] = True
         yield c
 
 
