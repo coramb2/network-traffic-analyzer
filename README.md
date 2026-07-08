@@ -126,6 +126,17 @@ The built-in anomaly detection engine identifies:
   - MSSQL (1433), VNC (5900), NetBIOS (137-139)
 - **Traffic Anomalies**: Identifies unusual protocol distributions
 - **Large Packets**: Detects potential data exfiltration via oversized UDP packets
+- **New Devices**: Flags a device (by MAC, or IP if no MAC was observed) the first time it's ever seen on the network - entirely offline, always on with `--alerts`. See "New Device Detection" below.
+
+## 🆕 New Device Detection
+
+`--alerts` also checks every device seen in a run against `known_devices.json` (or `KNOWN_DEVICES_PATH`), a small on-disk record of every MAC/IP ever seen in a previous run, and raises a `NEW_DEVICE` alert the first time one shows up. Identity is keyed by MAC when available - since a MAC survives a DHCP lease renewal, a device that just got a new IP isn't wrongly flagged as new - falling back to IP only when no source MAC was ever observed for it (e.g. traffic captured over an interface without Ethernet framing).
+
+Two things worth knowing:
+- **The very first capture run against a fresh install will flag every device as "new"** - there's no history yet to compare against. That's expected, not a bug; treat that first run's alerts as a baseline, not a threat report.
+- Only devices that look like they're actually on your LAN are checked (a device we recorded a source MAC for, or any device with a private/local IP) - a public destination IP your devices merely talked to (e.g. `8.8.8.8`) is never flagged as a "new device".
+
+This is entirely local and offline - no third-party service involved, unlike GeoIP above.
 
 ## ✅ Testing
 
@@ -166,6 +177,7 @@ network-traffic-analyzer/
 ├── notifications.py            # Webhook/email alert digests (stdlib only)
 ├── geoip.py                    # Opt-in GeoIP/org lookup for public IPs (cached)
 ├── vendor_lookup.py            # Offline MAC -> vendor lookup (manuf)
+├── known_devices.py            # Persistent MAC/IP history, powers NEW_DEVICE alerts
 ├── webapp.py                   # Dashboard: live view, run history, alert workflow
 ├── templates/index.html        # Dashboard frontend
 ├── static/vendor/chart.min.js  # Vendored Chart.js (no CDN dependency)

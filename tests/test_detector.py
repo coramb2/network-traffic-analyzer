@@ -12,6 +12,7 @@ def isolated_state(tmp_path, monkeypatch):
     """Every detector loads its allowlist from ALERT_STATE_PATH on init -
     point it somewhere empty/per-test so tests don't see each other's state."""
     monkeypatch.setenv("ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
+    monkeypatch.setenv("KNOWN_DEVICES_PATH", str(tmp_path / "known_devices.json"))
     monkeypatch.chdir(tmp_path)
 
 
@@ -239,3 +240,53 @@ def test_export_alerts_rejects_path_escape(tmp_path):
     detector = AnomalyDetector()
     with pytest.raises(ValueError):
         detector.export_alerts("/etc/cron.d/malicious")
+
+
+# --- detect_new_devices --------------------------------------------------
+
+def test_new_devices_flagged_on_first_run():
+    detector = AnomalyDetector()
+    alerts = detector.detect_new_devices([
+        {"ip": "192.168.1.5", "mac": "aa:bb:cc:dd:ee:ff"},
+        {"ip": "192.168.1.6", "mac": None},
+    ])
+    assert {a["source_ip"] for a in alerts} == {"192.168.1.5", "192.168.1.6"}
+    assert all(a["type"] == "NEW_DEVICE" for a in alerts)
+    assert all(a["severity"] == "MEDIUM" for a in alerts)
+
+
+def test_same_device_not_flagged_again():
+    detector = AnomalyDetector()
+    devices = [{"ip": "192.168.1.5", "mac": "aa:bb:cc:dd:ee:ff"}]
+    detector.detect_new_devices(devices)
+    assert detector.detect_new_devices(devices) == []
+
+
+def test_new_device_alert_mentions_mac_when_known():
+    detector = AnomalyDetector()
+    alerts = detector.detect_new_devices([{"ip": "192.168.1.5", "mac": "aa:bb:cc:dd:ee:ff"}])
+    assert "aa:bb:cc:dd:ee:ff" in alerts[0]["details"]
+
+
+def test_new_device_alert_notes_missing_mac():
+    detector = AnomalyDetector()
+    alerts = detector.detect_new_devices([{"ip": "192.168.1.5", "mac": None}])
+    assert "No MAC recorded" in alerts[0]["details"]
+
+
+def test_new_device_alerts_respect_allowlist(monkeypatch):
+    import alert_rules
+    alert_rules.add_rule(alert_type="NEW_DEVICE", source_ip="192.168.1.5")
+
+    detector = AnomalyDetector()  # loads allowlist on init, after the rule was added
+    alerts = detector.detect_new_devices([{"ip": "192.168.1.5", "mac": None}])
+    assert alerts == []
+    assert detector.alerts == []
+
+
+def test_new_device_alerts_added_to_running_alert_list():
+    detector = AnomalyDetector()
+    detector.analyze_packet(make_packet(dst_port=3389))  # one SUSPICIOUS_PORT alert
+    detector.detect_new_devices([{"ip": "192.168.1.5", "mac": None}])
+    assert len(detector.alerts) == 2
+    assert {a["type"] for a in detector.alerts} == {"SUSPICIOUS_PORT", "NEW_DEVICE"}

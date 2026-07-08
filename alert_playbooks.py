@@ -154,6 +154,31 @@ PLAYBOOKS = {
             "Otherwise, this is expected traffic and needs no action.",
         ],
     },
+    "NEW_DEVICE": {
+        "title": "New Device",
+        "what": (
+            "A device (identified by its MAC address, or by IP if no MAC "
+            "was observed) sent traffic that was never seen on this "
+            "network in any previous capture run."
+        ),
+        "benign": (
+            "A new phone, laptop, smart-home gadget, or guest's device "
+            "joining your network for the first time; a device that got a "
+            "new MAC because it uses MAC randomization (common on modern "
+            "phones/laptops for privacy)."
+        ),
+        "concerning": (
+            "A device you don't recognize and can't account for, "
+            "especially if it shows other alerts (port scanning, "
+            "suspicious ports) shortly after appearing."
+        ),
+        "steps": [
+            "Check the Devices panel for the MAC vendor - does it match hardware you own?",
+            "If it's a device you just added, name it in the Devices panel so future runs recognize it.",
+            "If you don't recognize it, check your router's DHCP client list and Wi-Fi/switch logs for more detail.",
+            "If it's unwelcome, remove it from your network (change Wi-Fi password, disable its switch port, or block its MAC at your router).",
+        ],
+    },
 }
 
 
