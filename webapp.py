@@ -369,7 +369,7 @@ def api_seen_devices():
     across the scanned runs so the busiest devices sort to the top.
     """
     names = device_names.load_names()
-    seen = {}  # ip -> {"packet_count": int, "hostname": str|None, "geoip": dict|None}
+    seen = {}  # ip -> {"packet_count": int, "hostname": str|None, "geoip": dict|None, "mac_info": dict|None}
 
     for run_id in list_run_ids()[:SEEN_DEVICES_RUN_LIMIT]:
         analysis = read_json(os.path.join(REPORTS_ROOT, run_id, "traffic_analysis.json"))
@@ -377,18 +377,23 @@ def api_seen_devices():
             continue
         hostnames = analysis.get("hostnames", {})
         geo = analysis.get("geoip", {})
+        mac_info = analysis.get("mac_info", {})
         for ip, count in analysis.get("top_ips", {}).items():
-            entry = seen.setdefault(ip, {"packet_count": 0, "hostname": None, "geoip": None})
+            entry = seen.setdefault(
+                ip, {"packet_count": 0, "hostname": None, "geoip": None, "mac_info": None}
+            )
             entry["packet_count"] += count
-            # Runs are newest-first, so only fill hostname/geoip if not already set.
+            # Runs are newest-first, so only fill each field if not already set.
             if entry["hostname"] is None and hostnames.get(ip):
                 entry["hostname"] = hostnames[ip]
             if entry["geoip"] is None and geo.get(ip):
                 entry["geoip"] = geo[ip]
+            if entry["mac_info"] is None and mac_info.get(ip):
+                entry["mac_info"] = mac_info[ip]
 
     # Include manually-named IPs even if they weren't in the scanned runs.
     for ip in names:
-        seen.setdefault(ip, {"packet_count": 0, "hostname": None, "geoip": None})
+        seen.setdefault(ip, {"packet_count": 0, "hostname": None, "geoip": None, "mac_info": None})
 
     devices = [
         {
@@ -396,6 +401,7 @@ def api_seen_devices():
             "packet_count": v["packet_count"],
             "hostname": v["hostname"],
             "geoip": v["geoip"],
+            "mac_info": v["mac_info"],
             "name": names.get(ip),
         }
         for ip, v in seen.items()

@@ -19,6 +19,7 @@ from reporter import TrafficReporter
 import device_names
 import geoip
 import notifications
+import vendor_lookup
 
 console = Console()
 
@@ -164,6 +165,16 @@ Examples:
             if geo_info:
                 console.print(f"[green]✓[/green] Resolved GeoIP for {len(geo_info)} IP(s)")
 
+        # MAC + vendor for the busiest IPs we actually saw a source MAC for
+        # (only ever recorded for the sending device - see analyzer.py).
+        # Entirely offline (bundled OUI database), always on - no lookup to
+        # skip, no rate limit or privacy tradeoff like the two lookups above.
+        mac_info = {
+            ip: {'mac': mac, 'vendor': vendor_lookup.lookup_vendor(mac)}
+            for ip, mac in analyzer.ip_mac_map.items()
+            if ip in top_ip_list
+        }
+
         # Prepare analyzer data for reporting
         report_duration_seconds = (datetime.now() - analyzer.start_time).seconds
         analyzer_data = {
@@ -180,6 +191,7 @@ Examples:
                                key=lambda x: x[1], reverse=True)[:20]},
             'hostnames': hostnames,
             'geoip': geo_info,
+            'mac_info': mac_info,
             'recent_packets': analyzer.packets[-100:]
         }
         
@@ -195,7 +207,7 @@ Examples:
         reporter = TrafficReporter(analyzer_data, detector_data)
         
         # Export JSON (always)
-        analyzer.export_to_json(args.output, hostnames=hostnames, geoip=geo_info)
+        analyzer.export_to_json(args.output, hostnames=hostnames, geoip=geo_info, mac_info=mac_info)
         
         # Export CSV if requested
         if args.csv:
