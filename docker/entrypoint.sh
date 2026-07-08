@@ -23,6 +23,7 @@ CAPTURE_FILTER="${CAPTURE_FILTER:-}"
 CAPTURE_PCAP="${CAPTURE_PCAP:-false}"
 RESOLVE_HOSTNAMES="${RESOLVE_HOSTNAMES:-true}"
 GEOIP_ENABLED="${GEOIP_ENABLED:-false}"
+THREAT_INTEL_ENABLED="${THREAT_INTEL_ENABLED:-false}"
 
 mkdir -p "$REPORTS_ROOT"
 
@@ -47,6 +48,9 @@ while true; do
     fi
     if [ "$GEOIP_ENABLED" = "true" ]; then
         args+=(--geoip)
+    fi
+    if [ "$THREAT_INTEL_ENABLED" = "true" ]; then
+        args+=(--threat-intel)
     fi
 
     echo "[$(date -u +%FT%TZ)] starting capture run $run_id (${CAPTURE_DURATION}s)"

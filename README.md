@@ -138,6 +138,15 @@ Two things worth knowing:
 
 This is entirely local and offline - no third-party service involved, unlike GeoIP above.
 
+## 🛡️ Threat Intelligence Matching
+
+`--threat-intel` (or `THREAT_INTEL_ENABLED=true`) checks every captured IP against [abuse.ch's Feodo Tracker](https://feodotracker.abuse.ch/), a free, no-API-key feed of active botnet command-and-control server IPs, and raises a **HIGH severity** `THREAT_INTEL_MATCH` alert for any hit. Requires `--alerts`.
+
+- **Off by default.** Unlike GeoIP, no data about your traffic is sent anywhere - this only downloads a public IP list - but it's still an outbound network call to a third party, so it stays opt-in.
+- The blocklist itself is cached on disk (`threat_intel_cache.json` / `THREAT_INTEL_CACHE_PATH`) and refreshed at most once every 24 hours. If a refresh fails (feed unreachable, network policy blocking it, etc.) the last successfully fetched list keeps being used - a day-old blocklist is far more useful than none, and a capture run never fails just because the feed couldn't be reached.
+- Every captured IP is checked, not just the top ones - a low-volume botnet beacon is exactly the kind of traffic that wouldn't make a top-20 list.
+- **This is a best-effort signal from one blocklist, not a complete threat feed.** A clean result doesn't mean an IP is safe, only that it isn't on this particular list.
+
 ## ✅ Testing
 
 ```bash
@@ -178,6 +187,7 @@ network-traffic-analyzer/
 ├── geoip.py                    # Opt-in GeoIP/org lookup for public IPs (cached)
 ├── vendor_lookup.py            # Offline MAC -> vendor lookup (manuf)
 ├── known_devices.py            # Persistent MAC/IP history, powers NEW_DEVICE alerts
+├── threat_intel.py             # Opt-in threat blocklist matching (cached)
 ├── webapp.py                   # Dashboard: live view, run history, alert workflow
 ├── templates/index.html        # Dashboard frontend
 ├── static/vendor/chart.min.js  # Vendored Chart.js (no CDN dependency)
