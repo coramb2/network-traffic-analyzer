@@ -133,7 +133,24 @@ Examples:
                 
                 # Run pattern analysis
                 pattern_alerts = detector.analyze_traffic_patterns(analyzer.packets)
-            
+
+                # New/unknown device detection - whole-run check against
+                # every device ever seen, not just this run's packets, so
+                # it's kept separate from analyze_packet/analyze_traffic_patterns
+                # above. Entirely offline; always runs when --alerts is on.
+                # ip_stats includes both sources and destinations (e.g.
+                # 8.8.8.8 as a packet's dst_ip) - restrict to IPs that are
+                # actually plausible LAN devices, not every external
+                # address anything on the network happened to talk to.
+                seen_devices = [
+                    {'ip': ip, 'mac': analyzer.ip_mac_map.get(ip)}
+                    for ip in analyzer.ip_stats.keys()
+                    if ip in analyzer.ip_mac_map or not geoip.is_public_ip(ip)
+                ]
+                new_device_alerts = detector.detect_new_devices(seen_devices)
+                if new_device_alerts:
+                    console.print(f"[yellow]![/yellow] {len(new_device_alerts)} new device(s) seen for the first time")
+
             alert_count = len(detector.alerts)
             if alert_count > 0:
                 console.print(f"[red]⚠[/red]  Found {alert_count} security alerts")

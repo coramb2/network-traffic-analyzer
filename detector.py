@@ -11,6 +11,7 @@ import os
 
 from paths import safe_output_path
 import alert_rules
+import known_devices
 
 class AnomalyDetector:
     def __init__(self, max_tracked_ips=10000):
@@ -169,6 +170,32 @@ class AnomalyDetector:
 
         return alerts
     
+    def detect_new_devices(self, devices):
+        """One-shot, whole-run check: alerts for any device (identified by
+        MAC when known, else by IP - see known_devices.py) never seen in a
+        previous run. Persisted to disk, so this only fires once per
+        device's lifetime (or once per DHCP-driven IP change for a device
+        we've only ever seen without a MAC).
+
+        devices: iterable of {"ip": str, "mac": str|None}, e.g. every IP
+        seen this run paired with its most recently observed source MAC.
+        """
+        alerts = []
+        for device in known_devices.record_and_diff(devices):
+            ip = device.get("ip")
+            mac = device.get("mac")
+            details = f"MAC {mac} - not seen on this network before" if mac \
+                else "No MAC recorded (non-Ethernet traffic) - not seen on this network before"
+            self._record({
+                'type': 'NEW_DEVICE',
+                'severity': 'MEDIUM',
+                'timestamp': datetime.now().isoformat(),
+                'source_ip': ip,
+                'description': f'New device seen on the network: {ip}',
+                'details': details,
+            }, alerts)
+        return alerts
+
     def _is_private_ip(self, ip):
         """Check if IP is in private range"""
         if not ip:

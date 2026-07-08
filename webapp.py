@@ -34,6 +34,7 @@ VALID_ALERT_TYPES = {
     "LARGE_PACKET",
     "UNUSUAL_PROTOCOL_RATIO",
     "PRIVATE_TO_PUBLIC",
+    "NEW_DEVICE",
 }
 
 RUN_ID_RE = re.compile(r"^\d{8}T\d{6}Z$")
