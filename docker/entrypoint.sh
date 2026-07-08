@@ -5,8 +5,15 @@
 # REPORTS_ROOT, keeps a "latest" symlink pointing at the newest run, and
 # prunes old run directories beyond RETENTION_RUNS so disk usage stays
 # bounded on a long-lived home-server deployment.
+#
+# Shared verbatim between the Docker and systemd deployments (see the
+# "Home Server Deployment (systemd, no Docker)" section of the README) -
+# only APP_DIR differs between them (/app in the capture container's
+# image, wherever the repo is checked out for systemd), so there's
+# exactly one place this loop's logic lives.
 set -euo pipefail
 
+APP_DIR="${APP_DIR:-/app}"
 REPORTS_ROOT="${REPORTS_ROOT:-/data/reports}"
 CAPTURE_DURATION="${CAPTURE_DURATION:-300}"
 INTERVAL_SECONDS="${INTERVAL_SECONDS:-3600}"
@@ -43,7 +50,7 @@ while true; do
     fi
 
     echo "[$(date -u +%FT%TZ)] starting capture run $run_id (${CAPTURE_DURATION}s)"
-    if ! (cd "$run_dir" && python3 /app/network_monitor.py "${args[@]}"); then
+    if ! (cd "$run_dir" && python3 "$APP_DIR/network_monitor.py" "${args[@]}"); then
         echo "[$(date -u +%FT%TZ)] capture run $run_id failed" >&2
     fi
 
