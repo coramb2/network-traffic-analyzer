@@ -125,7 +125,10 @@ def api_live():
                 age = None
 
             if age is not None and age < LIVE_STALE_SECONDS:
-                return jsonify({"status": "live", "run_id": run_ids[0], **live_status})
+                # live_status itself carries a "status": "running" field
+                # (see analyzer.export_live_snapshot) - spread it first so
+                # our "live" status always wins, not the other way around.
+                return jsonify({"run_id": run_ids[0], **live_status, "status": "live"})
 
     latest_link = os.path.join(REPORTS_ROOT, "latest")
     if os.path.islink(latest_link) or os.path.isdir(latest_link):

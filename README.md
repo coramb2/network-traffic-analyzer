@@ -127,6 +127,24 @@ The built-in anomaly detection engine identifies:
 - **Traffic Anomalies**: Identifies unusual protocol distributions
 - **Large Packets**: Detects potential data exfiltration via oversized UDP packets
 
+## ✅ Testing
+
+```bash
+pip install -r requirements.txt -r requirements-dashboard.txt -r requirements-dev.txt
+pytest
+```
+
+The suite covers the pure-logic modules directly (`paths`, `detector`,
+`alert_rules`, `alert_playbooks`, `device_names`, `reporter`, `analyzer` -
+the last using synthetic in-memory packets built with scapy, so no root or
+real network access is needed) plus the dashboard's Flask routes via its
+test client (path-traversal attempts against run IDs, allowlist/device
+validation, resolved-alert state, live-vs-idle status). Each test file
+isolates its own state directory (`ALERT_STATE_PATH`/`DEVICE_NAMES_PATH`/
+`REPORTS_ROOT`) via `tmp_path`, so tests don't share or leak state between
+runs. No network access, root, or a running capture is required for any
+of it.
+
 ## 🛠️ Technical Stack
 
 - **Scapy 2.5.0**: Powerful Python packet manipulation library
