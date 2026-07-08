@@ -158,11 +158,13 @@ class PacketAnalyzer:
             border_style="blue"
         )
     
-    def export_to_json(self, filename="traffic_analysis.json", hostnames=None):
+    def export_to_json(self, filename="traffic_analysis.json", hostnames=None, geoip=None):
         """Export analysis results to JSON.
 
         hostnames, if given, is a { ip: reverse-DNS-name } map stored
         alongside the stats so the dashboard can suggest device names.
+        geoip, if given, is a { ip: {country, country_code, org} } map for
+        public IPs (see geoip.resolve_geoip).
         """
         duration_seconds = (datetime.now() - self.start_time).seconds
         output = {
@@ -175,6 +177,7 @@ class PacketAnalyzer:
             'top_ips': dict(sorted(self.ip_stats.items(), key=lambda x: x[1], reverse=True)[:20]),
             'top_ports': dict(sorted(self.port_stats.items(), key=lambda x: x[1], reverse=True)[:20]),
             'hostnames': hostnames or {},
+            'geoip': geoip or {},
             'recent_packets': self.packets[-100:]  # Last 100 packets
         }
         

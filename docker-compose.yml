@@ -36,6 +36,13 @@ services:
       CAPTURE_PCAP: "${CAPTURE_PCAP:-false}"
       # Set false to skip reverse-DNS lookups (no device-name suggestions).
       RESOLVE_HOSTNAMES: "${RESOLVE_HOSTNAMES:-true}"
+      # Off by default: looking up country/org for public IPs sends them to
+      # a third-party API (ip-api.com), unlike the reverse-DNS lookup above
+      # which only queries your own resolver. See README before enabling.
+      GEOIP_ENABLED: "${GEOIP_ENABLED:-false}"
+      # Lives alongside the reports (already read-write for this container),
+      # not the shared state volume - only this container ever needs it.
+      GEOIP_CACHE_PATH: /data/reports/geoip_cache.json
       ALERT_STATE_PATH: /data/state/alert_state.json
 
       # Alert notifications - both are opt-in and independent; leave either

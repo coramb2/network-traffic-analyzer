@@ -163,6 +163,7 @@ network-traffic-analyzer/
 ├── alert_rules.py              # Shared allowlist/resolved-alert state (both containers)
 ├── device_names.py             # Shared device naming + reverse-DNS resolution
 ├── notifications.py            # Webhook/email alert digests (stdlib only)
+├── geoip.py                    # Opt-in GeoIP/org lookup for public IPs (cached)
 ├── webapp.py                   # Dashboard: live view, run history, alert workflow
 ├── templates/index.html        # Dashboard frontend
 ├── static/vendor/chart.min.js  # Vendored Chart.js (no CDN dependency)
@@ -377,6 +378,18 @@ off entirely with `RESOLVE_HOSTNAMES=false` (or `--no-hostnames` on the
 CLI) if you'd rather no PTR queries leave the host. Names are keyed by IP
 for now, stored in `data/device_names.json` in the same read-write state
 volume as the alert rules.
+
+For public IPs, the Devices panel can also show a country and
+organization ("🌍 US · DigitalOcean") - useful context for deciding
+whether an unfamiliar external address in an alert is worth a second
+look. Unlike reverse-DNS, this is **off by default**: it queries a
+third-party API (ip-api.com's free tier) rather than just your own DNS
+resolver, sending it the IPs your devices talked to. Enable with
+`GEOIP_ENABLED=true` (or `--geoip` on the CLI) if you're fine with that
+tradeoff. Results are cached on disk for 30 days (`geoip.py`), both to
+respect that API's free-tier rate limit and because an IP's geolocation
+rarely changes day to day; a failed/rate-limited lookup is cached too, so
+one bad IP doesn't get retried every single run.
 
 ### Why it's set up this way
 

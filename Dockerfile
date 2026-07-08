@@ -13,7 +13,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY analyzer.py detector.py reporter.py network_monitor.py paths.py alert_rules.py alert_playbooks.py device_names.py notifications.py ./
+COPY analyzer.py detector.py reporter.py network_monitor.py paths.py alert_rules.py alert_playbooks.py device_names.py notifications.py geoip.py ./
 COPY docker/entrypoint.sh /entrypoint.sh
 
 # Grant CAP_NET_RAW/CAP_NET_ADMIN on the python3 binary itself so the
