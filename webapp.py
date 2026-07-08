@@ -14,6 +14,7 @@ import re
 import secrets
 import sys
 import time
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
@@ -24,6 +25,8 @@ import alert_rules
 import device_names
 
 SEEN_DEVICES_RUN_LIMIT = 20
+DEVICE_TREND_RUN_LIMIT = 20
+DEVICE_TREND_TOP_N = 5
 
 REPORTS_ROOT = os.path.realpath(os.environ.get("REPORTS_ROOT", "/data/reports"))
 LIVE_STALE_SECONDS = 5
@@ -410,6 +413,58 @@ def api_seen_devices():
     ]
     devices.sort(key=lambda d: d["packet_count"], reverse=True)
     return jsonify(devices)
+
+
+@app.route("/api/device-trend")
+def api_device_trend():
+    """Per-device packet counts across the last N completed runs, for the
+    devices with the most total traffic in that window.
+
+    The aggregate trend chart (see /api/runs) shows overall packets/sec
+    per run, but not who's actually generating it - this powers a
+    per-device breakdown of the same time window.
+    """
+    run_ids = list(reversed(list_run_ids()[:DEVICE_TREND_RUN_LIMIT]))  # oldest -> newest
+    names = device_names.load_names()
+
+    runs = []
+    per_run_top_ips = []
+    totals = Counter()
+    labels_by_ip = {}
+
+    for run_id in run_ids:
+        analysis = read_json(os.path.join(REPORTS_ROOT, run_id, "traffic_analysis.json"))
+        if not analysis:
+            continue
+        top_ips = analysis.get("top_ips", {})
+        hostnames = analysis.get("hostnames", {})
+        mac_info = analysis.get("mac_info", {})
+
+        runs.append({"run_id": run_id, "analysis_time": analysis.get("analysis_time")})
+        per_run_top_ips.append(top_ips)
+
+        for ip, count in top_ips.items():
+            totals[ip] += count
+            if ip not in labels_by_ip:
+                vendor = (mac_info.get(ip) or {}).get("vendor")
+                labels_by_ip[ip] = names.get(ip) or hostnames.get(ip) or vendor or ip
+
+    top_devices = [ip for ip, _ in totals.most_common(DEVICE_TREND_TOP_N)]
+
+    return jsonify({
+        "runs": runs,
+        "devices": [
+            {
+                "ip": ip,
+                "label": labels_by_ip[ip],
+                # 0 for a run where this device wasn't in that run's
+                # top_ips (top 20 only) - not necessarily silent, just
+                # not among the busiest that run.
+                "packet_counts": [top_ips.get(ip, 0) for top_ips in per_run_top_ips],
+            }
+            for ip in top_devices
+        ],
+    })
 
 
 @app.route("/api/runs/<run_id>/report.html")

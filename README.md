@@ -147,6 +147,14 @@ This is entirely local and offline - no third-party service involved, unlike Geo
 - Every captured IP is checked, not just the top ones - a low-volume botnet beacon is exactly the kind of traffic that wouldn't make a top-20 list.
 - **This is a best-effort signal from one blocklist, not a complete threat feed.** A clean result doesn't mean an IP is safe, only that it isn't on this particular list.
 
+## 📈 Bandwidth by Device
+
+The dashboard's "Bandwidth by Device" chart breaks the aggregate Traffic Trend chart down by device: a line per device, packet counts across the last 20 completed runs (`/api/device-trend`), for whichever 5 devices generated the most total traffic in that window - useful for spotting which device is actually driving a spike the aggregate chart shows, or noticing one device's usage creeping up over time.
+
+- Each line is labeled with the device's manual name if you've set one, else its reverse-DNS hostname, else its MAC vendor, else the bare IP - same precedence the Devices panel uses.
+- A device's line color is stable for as long as it stays in the top 5, even as its *rank* within the top 5 moves - only when a device actually drops out of the top 5 does its color slot free up for whichever device takes its place.
+- A run where a device wasn't among that run's top 20 IPs shows as 0 for that point, not a gap - it wasn't one of the busiest devices that run, which isn't the same as being silent.
+
 ## ✅ Testing
 
 ```bash
