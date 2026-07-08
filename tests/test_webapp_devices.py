@@ -142,3 +142,106 @@ def test_seen_devices_mac_info_null_when_no_ethernet_layer_seen(app_ctx, client)
     resp = client.get("/api/seen-devices")
     devices = {d["ip"]: d for d in resp.get_json()}
     assert devices["192.168.1.5"]["mac_info"] is None
+
+
+# --- /api/device-trend -----------------------------------------------------
+
+def test_device_trend_empty_when_no_runs(client):
+    resp = client.get("/api/device-trend")
+    body = resp.get_json()
+    assert body == {"runs": [], "devices": []}
+
+
+def test_device_trend_returns_runs_oldest_first(app_ctx, client):
+    _, reports_root = app_ctx
+    make_run_with_ips(reports_root, "20260101T000000Z", {"192.168.1.5": 10})
+    make_run_with_ips(reports_root, "20260102T000000Z", {"192.168.1.5": 20})
+
+    resp = client.get("/api/device-trend")
+    run_ids = [r["run_id"] for r in resp.get_json()["runs"]]
+    assert run_ids == ["20260101T000000Z", "20260102T000000Z"]
+
+
+def test_device_trend_selects_top_n_by_total_traffic(app_ctx, client):
+    _, reports_root = app_ctx
+    # 6 distinct devices; only the busiest 5 (DEVICE_TREND_TOP_N) should appear.
+    top_ips = {f"192.168.1.{i}": (i + 1) * 10 for i in range(6)}
+    make_run_with_ips(reports_root, "20260101T000000Z", top_ips)
+
+    resp = client.get("/api/device-trend")
+    devices = resp.get_json()["devices"]
+    assert len(devices) == 5
+    assert "192.168.1.0" not in [d["ip"] for d in devices]  # the least-busy one, dropped
+
+
+def test_device_trend_sorted_busiest_total_first(app_ctx, client):
+    _, reports_root = app_ctx
+    make_run_with_ips(reports_root, "20260101T000000Z", {"192.168.1.1": 5, "192.168.1.2": 50})
+
+    resp = client.get("/api/device-trend")
+    ips_in_order = [d["ip"] for d in resp.get_json()["devices"]]
+    assert ips_in_order == ["192.168.1.2", "192.168.1.1"]
+
+
+def test_device_trend_fills_zero_for_runs_device_missing_from(app_ctx, client):
+    _, reports_root = app_ctx
+    make_run_with_ips(reports_root, "20260101T000000Z", {"192.168.1.5": 10})
+    make_run_with_ips(reports_root, "20260102T000000Z", {"192.168.1.5": 20, "192.168.1.6": 5})
+
+    resp = client.get("/api/device-trend")
+    devices = {d["ip"]: d for d in resp.get_json()["devices"]}
+    # 192.168.1.6 didn't appear in the first (older) run at all.
+    assert devices["192.168.1.6"]["packet_counts"] == [0, 5]
+    assert devices["192.168.1.5"]["packet_counts"] == [10, 20]
+
+
+def test_device_trend_label_prefers_manual_name(app_ctx, client):
+    _, reports_root = app_ctx
+    make_run_with_ips(reports_root, "20260101T000000Z", {"192.168.1.5": 10},
+                       hostnames={"192.168.1.5": "some-host"})
+    client.post("/api/devices", json={"ip": "192.168.1.5", "name": "Cora's Laptop"})
+
+    resp = client.get("/api/device-trend")
+    devices = {d["ip"]: d for d in resp.get_json()["devices"]}
+    assert devices["192.168.1.5"]["label"] == "Cora's Laptop"
+
+
+def test_device_trend_label_falls_back_to_hostname_then_vendor_then_ip(app_ctx, client):
+    _, reports_root = app_ctx
+    make_run_with_ips(reports_root, "20260101T000000Z", {
+        "192.168.1.5": 10,
+        "192.168.1.6": 5,
+        "192.168.1.7": 3,
+    }, hostnames={"192.168.1.5": "nas.local"},
+       mac_info={"192.168.1.6": {"mac": "aa:bb:cc:dd:ee:ff", "vendor": "Raspberry Pi Foundation"}})
+
+    resp = client.get("/api/device-trend")
+    devices = {d["ip"]: d for d in resp.get_json()["devices"]}
+    assert devices["192.168.1.5"]["label"] == "nas.local"
+    assert devices["192.168.1.6"]["label"] == "Raspberry Pi Foundation"
+    assert devices["192.168.1.7"]["label"] == "192.168.1.7"
+
+
+def test_device_trend_label_uses_earliest_run_seen(app_ctx, client):
+    """Once a label is picked for a device it doesn't get overwritten by a
+    later run's (potentially missing) hostname - first-seen sticks, unlike
+    /api/seen-devices where the newest run wins for hostname suggestions."""
+    _, reports_root = app_ctx
+    make_run_with_ips(reports_root, "20260101T000000Z", {"192.168.1.5": 10},
+                       hostnames={"192.168.1.5": "old-host"})
+    make_run_with_ips(reports_root, "20260102T000000Z", {"192.168.1.5": 20})
+
+    resp = client.get("/api/device-trend")
+    devices = {d["ip"]: d for d in resp.get_json()["devices"]}
+    assert devices["192.168.1.5"]["label"] == "old-host"
+
+
+def test_device_trend_ignores_runs_with_missing_analysis_file(app_ctx, client):
+    _, reports_root = app_ctx
+    make_run_with_ips(reports_root, "20260101T000000Z", {"192.168.1.5": 10})
+    (reports_root / "20260102T000000Z").mkdir()  # run dir with no traffic_analysis.json
+
+    resp = client.get("/api/device-trend")
+    body = resp.get_json()
+    assert len(body["runs"]) == 1
+    assert body["devices"][0]["packet_counts"] == [10]
