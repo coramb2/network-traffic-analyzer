@@ -1,0 +1,27 @@
+[Unit]
+Description=Network Traffic Analyzer - web dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=netdashboard
+Group=nettraffic
+WorkingDirectory=/opt/network-traffic-analyzer
+EnvironmentFile=/etc/network-traffic-analyzer/dashboard.env
+ExecStart=/opt/network-traffic-analyzer/venv/bin/python3 /opt/network-traffic-analyzer/webapp.py
+Restart=on-failure
+RestartSec=5
+
+# No packet-capture privileges needed at all: just reads report files and
+# serves HTTP, same reasoning as the dashboard container in Docker.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/network-traffic-analyzer/state
+# Reports themselves are never written by the dashboard - read access to
+# them (and to the state dir above) is via shared nettraffic group
+# membership, not an explicit ReadWritePaths grant.
+
+[Install]
+WantedBy=multi-user.target

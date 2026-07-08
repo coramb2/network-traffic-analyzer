@@ -174,6 +174,7 @@ network-traffic-analyzer/
 ├── Dockerfile                  # Capture container image
 ├── Dockerfile.dashboard        # Dashboard container image
 ├── docker-compose.yml          # Both services wired together
+├── systemd/                     # Native systemd deployment (Docker alternative)
 └── README.md                  # Documentation
 ```
 
@@ -438,10 +439,80 @@ it here rather than silently doing part of the job.
 ### Manual (non-Docker) alternative
 
 You can still run it directly with `sudo`, as described above — useful for
-one-off captures or debugging. The systemd-service route (a persistent
-unit + `setcap` on a venv's python, instead of Docker) is a reasonable
-alternative if you'd rather not run Docker on your home server; ask if
-you'd like that added too.
+one-off captures or debugging.
+
+## 🖥️ Home Server Deployment (systemd, no Docker)
+
+If you'd rather not run Docker on your home server, `systemd/` sets up the
+same two-service architecture (scheduled capture + read-only dashboard)
+as native systemd units instead of containers. Same scheduling loop
+(`docker/entrypoint.sh` is shared verbatim between both deployments — see
+the comment at its top), same environment variables, same security
+posture (least-privilege capabilities instead of root, a shared group
+instead of a shared Docker gid) — just no container runtime involved.
+
+### Setup
+
+```bash
+git clone https://github.com/coramb2/network-traffic-analyzer.git
+cd network-traffic-analyzer
+sudo systemd/install.sh
+```
+
+`install.sh` is idempotent (safe to re-run after `git pull`) and:
+- creates a shared `nettraffic` group plus two unprivileged system users,
+  `netanalyzer` (runs the capture loop) and `netdashboard` (runs the web
+  UI) — mirroring the Docker deployment's non-root `analyzer` user and
+  shared-group pattern, just with two real users instead of one
+- copies the application code to `/opt/network-traffic-analyzer` and
+  creates a Python virtualenv there with both requirements files installed
+- creates `/var/lib/network-traffic-analyzer/{reports,state}`, owned so
+  each service can write what it owns and read the other's output via the
+  shared `nettraffic` group — the same read/write split as the Docker
+  volumes (`./reports`, `./data`)
+- writes `/etc/network-traffic-analyzer/{capture,dashboard}.env` from the
+  templates in `systemd/*.env.example` **only if they don't already
+  exist**, so a re-run never clobbers your edits
+- installs `systemd/*.service` to `/etc/systemd/system/` and runs
+  `systemctl daemon-reload`
+
+Then edit the two generated env files — set `IFACE` in `capture.env` and
+`DASHBOARD_PASSWORD` in `dashboard.env` (`openssl rand -base64 24`) — and
+start both services:
+
+```bash
+sudo systemctl enable --now network-traffic-analyzer network-traffic-dashboard
+sudo systemctl status network-traffic-analyzer network-traffic-dashboard
+journalctl -u network-traffic-analyzer -f    # tail capture logs
+journalctl -u network-traffic-dashboard -f   # tail dashboard logs
+```
+
+### Why it's set up this way
+
+- **`AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN`** instead of `setcap`
+  on the venv's python binary: it's the systemd-native equivalent of the
+  Docker image's `setcap` grant (see above), and unlike a file capability
+  it's inherited transparently across `entrypoint.sh`'s exec into
+  `python3`, so `NoNewPrivileges=yes` can stay on for both services — a
+  `setcap`-on-binary approach would conflict with that setting.
+- **`ProtectSystem=strict` + `ProtectHome=yes` + a narrow
+  `ReadWritePaths=`**: each service's filesystem is read-only except the
+  one directory it actually needs to write to (`reports` for capture,
+  `state` for the dashboard) — the systemd equivalent of the containers'
+  read-only bind mounts.
+- **Shared `nettraffic` group, `0770` directories**: since capture and the
+  dashboard run as two different Linux users (unlike the two containers,
+  which share Docker's networking-namespace isolation instead), each
+  needs read access to state it doesn't own. Group membership plus
+  `0770`/`0640` permissions grants exactly that, without either service
+  running as root or as the same user as the other.
+- **`Restart=on-failure`**: same self-healing behavior as Docker Compose's
+  `restart: unless-stopped`.
+
+Everything else — `GEOIP_ENABLED`, `RESOLVE_HOSTNAMES`, alert
+notifications, retention — is configured identically to the Docker
+deployment; see the comments in `systemd/capture.env.example` and
+`systemd/dashboard.env.example`.
 
 ## 📚 Learning Resources
 

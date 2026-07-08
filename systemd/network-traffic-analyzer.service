@@ -1,0 +1,39 @@
+[Unit]
+Description=Network Traffic Analyzer - scheduled packet capture
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=netanalyzer
+Group=nettraffic
+WorkingDirectory=/opt/network-traffic-analyzer
+EnvironmentFile=/etc/network-traffic-analyzer/capture.env
+# entrypoint.sh calls bare `python3` (shared as-is with the Docker image,
+# where that's already the right interpreter) - put the venv first on
+# PATH so that resolves to it here instead of the system interpreter.
+# Keeps the rest of a normal PATH too: scapy shells out to tcpdump (often
+# in /usr/sbin) to compile BPF filters.
+Environment=PATH=/opt/network-traffic-analyzer/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/opt/network-traffic-analyzer/docker/entrypoint.sh
+Restart=on-failure
+RestartSec=10
+
+# Raw packet capture needs exactly two capabilities, not full root.
+# Ambient capabilities are the systemd-native way to grant them: unlike
+# setcap on a binary (the Docker image's approach, since Docker Compose
+# has no direct equivalent to this), they're inherited across exec
+# transparently, so NoNewPrivileges can stay on below.
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+NoNewPrivileges=yes
+
+# Filesystem hardening: read-only everywhere except the one directory
+# this service actually needs to write to.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/network-traffic-analyzer/reports
+
+[Install]
+WantedBy=multi-user.target
