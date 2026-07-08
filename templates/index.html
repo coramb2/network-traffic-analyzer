@@ -789,6 +789,12 @@ function geoipLineHtml(geo) {
     return `<br><span class="ip-sub">🌍 ${parts.join(' · ')}</span>`;
 }
 
+function macInfoLineHtml(macInfo) {
+    if (!macInfo || !macInfo.mac) return '';
+    const parts = [macInfo.mac, macInfo.vendor].filter(Boolean).map(escapeHtml);
+    return `<br><span class="ip-sub">📡 ${parts.join(' · ')}</span>`;
+}
+
 function deviceRowHtml(dev) {
     const suggestion = dev.hostname
         ? `<span class="suggest-chip" data-action="use-suggestion" data-ip="${dev.ip}"
@@ -796,7 +802,7 @@ function deviceRowHtml(dev) {
         : '<span class="updated-at">—</span>';
     const seen = (dev.packet_count
         ? `<span class="ip-sub">${dev.ip}</span> · ${dev.packet_count} pkts`
-        : `<span class="ip-sub">${dev.ip}</span>`) + geoipLineHtml(dev.geoip);
+        : `<span class="ip-sub">${dev.ip}</span>`) + geoipLineHtml(dev.geoip) + macInfoLineHtml(dev.mac_info);
     return `
         <tr data-device-ip="${dev.ip}">
             <td>${seen}</td>

@@ -4,7 +4,7 @@ Network Traffic Analyzer - Main Packet Capture Module
 Captures and analyzes network packets in real-time
 """
 
-from scapy.all import sniff, IP, TCP, UDP, ICMP, Raw
+from scapy.all import sniff, Ether, IP, TCP, UDP, ICMP, Raw
 from scapy.layers import http
 from scapy.utils import PcapWriter
 from collections import defaultdict
@@ -30,6 +30,7 @@ class PacketAnalyzer:
         self.protocol_stats = defaultdict(int)
         self.ip_stats = defaultdict(int)
         self.port_stats = defaultdict(int)
+        self.ip_mac_map = {}  # src_ip -> most-recently-seen source MAC
         self.packets = []
         self.start_time = datetime.now()
         self.suspicious_activity = []
@@ -51,7 +52,16 @@ class PacketAnalyzer:
             # Track IP addresses
             self.ip_stats[src_ip] += 1
             self.ip_stats[dst_ip] += 1
-            
+
+            # Only the *source* MAC is meaningful to record: on a switched
+            # LAN, packet[Ether].src is always the actual sending device's
+            # NIC, but packet[Ether].dst for internet-bound traffic is
+            # typically the gateway's MAC, not the real destination
+            # device's - recording that would misattribute the router's
+            # vendor to whatever external IP the traffic happened to go to.
+            if Ether in packet:
+                self.ip_mac_map[src_ip] = packet[Ether].src
+
             # Determine protocol
             protocol = "OTHER"
             src_port = dst_port = None
@@ -158,13 +168,15 @@ class PacketAnalyzer:
             border_style="blue"
         )
     
-    def export_to_json(self, filename="traffic_analysis.json", hostnames=None, geoip=None):
+    def export_to_json(self, filename="traffic_analysis.json", hostnames=None, geoip=None, mac_info=None):
         """Export analysis results to JSON.
 
         hostnames, if given, is a { ip: reverse-DNS-name } map stored
         alongside the stats so the dashboard can suggest device names.
         geoip, if given, is a { ip: {country, country_code, org} } map for
         public IPs (see geoip.resolve_geoip).
+        mac_info, if given, is a { ip: {mac, vendor} } map (see
+        vendor_lookup.py) - vendor is omitted for an unrecognized OUI.
         """
         duration_seconds = (datetime.now() - self.start_time).seconds
         output = {
@@ -178,6 +190,7 @@ class PacketAnalyzer:
             'top_ports': dict(sorted(self.port_stats.items(), key=lambda x: x[1], reverse=True)[:20]),
             'hostnames': hostnames or {},
             'geoip': geoip or {},
+            'mac_info': mac_info or {},
             'recent_packets': self.packets[-100:]  # Last 100 packets
         }
         

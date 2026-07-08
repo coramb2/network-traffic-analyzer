@@ -150,6 +150,7 @@ of it.
 - **Scapy 2.5.0**: Powerful Python packet manipulation library
 - **Rich 13.7.0**: Modern terminal UI with live updates
 - **Flask 3.0.3**: Read-only web dashboard for live stats and run history
+- **manuf 1.1.5**: Offline MAC vendor lookup (bundles Wireshark's OUI database)
 - **Python Threading**: Non-blocking packet processing
 - **BPF (Berkeley Packet Filter)**: Industry-standard packet filtering
 
@@ -164,6 +165,7 @@ network-traffic-analyzer/
 ├── device_names.py             # Shared device naming + reverse-DNS resolution
 ├── notifications.py            # Webhook/email alert digests (stdlib only)
 ├── geoip.py                    # Opt-in GeoIP/org lookup for public IPs (cached)
+├── vendor_lookup.py            # Offline MAC -> vendor lookup (manuf)
 ├── webapp.py                   # Dashboard: live view, run history, alert workflow
 ├── templates/index.html        # Dashboard frontend
 ├── static/vendor/chart.min.js  # Vendored Chart.js (no CDN dependency)
@@ -390,6 +392,26 @@ tradeoff. Results are cached on disk for 30 days (`geoip.py`), both to
 respect that API's free-tier rate limit and because an IP's geolocation
 rarely changes day to day; a failed/rate-limited lookup is cached too, so
 one bad IP doesn't get retried every single run.
+
+The Devices panel also shows the **source MAC address and manufacturer**
+for devices where one was actually seen ("📡 b8:27:eb:11:22:33 · Raspberry
+Pi Foundation") - vendor lookup is via `manuf` (`vendor_lookup.py`), which
+bundles Wireshark's OUI database, so it's fully offline: no network call,
+no rate limit, no privacy tradeoff like GeoIP above, always on. Only the
+*source* MAC is ever recorded, and only for the sending device - a
+packet's destination MAC for internet-bound traffic is typically your
+router's, not the real destination's, so recording it would misattribute
+the router's vendor to whatever external IP the traffic happened to go
+to (see the comment in `analyzer.py`). An unrecognized OUI (common for
+newer or less common hardware, and inherent to any curated-but-incomplete
+database) just shows no vendor, never a guess.
+
+Note this doesn't yet solve the underlying problem MAC-based identity is
+usually used for - a name still won't follow a device across a DHCP
+lease change, since naming itself is still keyed by IP. Re-keying names
+to MAC (with a migration for existing `device_names.json` data) would
+close that gap but is a bigger, riskier change than this pass; flagging
+it here rather than silently doing part of the job.
 
 ### Why it's set up this way
 

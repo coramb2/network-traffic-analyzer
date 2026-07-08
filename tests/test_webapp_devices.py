@@ -31,7 +31,7 @@ def client(app_ctx):
         yield c
 
 
-def make_run_with_ips(reports_root, run_id, top_ips, hostnames=None, geoip=None):
+def make_run_with_ips(reports_root, run_id, top_ips, hostnames=None, geoip=None, mac_info=None):
     run_dir = reports_root / run_id
     run_dir.mkdir()
     (run_dir / "traffic_analysis.json").write_text(json.dumps({
@@ -39,6 +39,7 @@ def make_run_with_ips(reports_root, run_id, top_ips, hostnames=None, geoip=None)
         "top_ips": top_ips,
         "hostnames": hostnames or {},
         "geoip": geoip or {},
+        "mac_info": mac_info or {},
     }))
 
 
@@ -120,3 +121,24 @@ def test_seen_devices_geoip_null_for_private_ips(app_ctx, client):
     resp = client.get("/api/seen-devices")
     devices = {d["ip"]: d for d in resp.get_json()}
     assert devices["192.168.1.5"]["geoip"] is None
+
+
+def test_seen_devices_includes_mac_info_newest_run_wins(app_ctx, client):
+    _, reports_root = app_ctx
+    old_mac = {"mac": "aa:aa:aa:aa:aa:aa", "vendor": "Old Vendor"}
+    new_mac = {"mac": "bb:bb:bb:bb:bb:bb", "vendor": "New Vendor"}
+    make_run_with_ips(reports_root, "20260101T000000Z", {"192.168.1.5": 10}, mac_info={"192.168.1.5": old_mac})
+    make_run_with_ips(reports_root, "20260102T000000Z", {"192.168.1.5": 20}, mac_info={"192.168.1.5": new_mac})
+
+    resp = client.get("/api/seen-devices")
+    devices = {d["ip"]: d for d in resp.get_json()}
+    assert devices["192.168.1.5"]["mac_info"]["vendor"] == "New Vendor"
+
+
+def test_seen_devices_mac_info_null_when_no_ethernet_layer_seen(app_ctx, client):
+    _, reports_root = app_ctx
+    make_run_with_ips(reports_root, "20260101T000000Z", {"192.168.1.5": 10})  # no mac_info entry
+
+    resp = client.get("/api/seen-devices")
+    devices = {d["ip"]: d for d in resp.get_json()}
+    assert devices["192.168.1.5"]["mac_info"] is None

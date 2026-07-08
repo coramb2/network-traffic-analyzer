@@ -5,7 +5,7 @@ import stat
 import pytest
 from rich.console import Group
 from rich.panel import Panel
-from scapy.all import ICMP, IP, TCP, UDP, Raw
+from scapy.all import ICMP, IP, TCP, UDP, Ether, Raw
 
 from analyzer import PacketAnalyzer
 
@@ -67,6 +67,38 @@ def test_icmp_packet_has_no_ports():
     assert analyzer.port_stats == {}
 
 
+def test_records_source_mac_for_ip():
+    analyzer = PacketAnalyzer()
+    pkt = Ether(src="b8:27:eb:11:22:33") / tcp_packet(dport=443)
+    analyzer.packet_callback(pkt)
+    assert analyzer.ip_mac_map["192.168.1.10"] == "b8:27:eb:11:22:33"
+
+
+def test_no_mac_recorded_without_ethernet_layer():
+    """Packets built without an Ether layer (e.g. some capture backends,
+    or synthetic test packets) shouldn't add a bogus entry."""
+    analyzer = PacketAnalyzer()
+    analyzer.packet_callback(tcp_packet())
+    assert analyzer.ip_mac_map == {}
+
+
+def test_mac_map_only_tracks_source_not_destination():
+    """Only the sending device's MAC is reliable on a switched LAN - the
+    destination MAC for internet-bound traffic is typically the gateway's,
+    not the real destination's, so it's never recorded (see analyzer.py)."""
+    analyzer = PacketAnalyzer()
+    pkt = Ether(src="b8:27:eb:11:22:33", dst="aa:bb:cc:dd:ee:ff") / tcp_packet(dst="93.184.216.34")
+    analyzer.packet_callback(pkt)
+    assert "93.184.216.34" not in analyzer.ip_mac_map
+
+
+def test_mac_map_updates_to_most_recent_sighting():
+    analyzer = PacketAnalyzer()
+    analyzer.packet_callback(Ether(src="aa:aa:aa:aa:aa:aa") / tcp_packet())
+    analyzer.packet_callback(Ether(src="bb:bb:bb:bb:bb:bb") / tcp_packet())
+    assert analyzer.ip_mac_map["192.168.1.10"] == "bb:bb:bb:bb:bb:bb"
+
+
 def test_packet_history_capped_at_1000():
     analyzer = PacketAnalyzer()
     for i in range(1005):
@@ -121,6 +153,25 @@ def test_export_to_json_writes_expected_fields(tmp_path):
     # so completed runs lost both once the capture ended.
     assert data["interface"] == "eth0"
     assert "packets_per_second" in data
+
+
+def test_export_to_json_writes_mac_info(tmp_path):
+    analyzer = PacketAnalyzer()
+    analyzer.packet_callback(tcp_packet(dport=443))
+    mac_info = {"192.168.1.10": {"mac": "b8:27:eb:11:22:33", "vendor": "Raspberry Pi Foundation"}}
+    analyzer.export_to_json("traffic_analysis.json", mac_info=mac_info)
+
+    data = json.loads((tmp_path / "traffic_analysis.json").read_text())
+    assert data["mac_info"]["192.168.1.10"]["vendor"] == "Raspberry Pi Foundation"
+
+
+def test_export_to_json_defaults_mac_info_to_empty_dict(tmp_path):
+    analyzer = PacketAnalyzer()
+    analyzer.packet_callback(tcp_packet())
+    analyzer.export_to_json("traffic_analysis.json")
+
+    data = json.loads((tmp_path / "traffic_analysis.json").read_text())
+    assert data["mac_info"] == {}
 
 
 def test_export_to_json_defaults_interface_when_none_given(tmp_path):
