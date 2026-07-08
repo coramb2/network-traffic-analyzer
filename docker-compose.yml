@@ -46,6 +46,11 @@ services:
       # Tracks every MAC/IP ever seen so --alerts can flag a first-time
       # device; also reports-local for the same reason as GEOIP_CACHE_PATH.
       KNOWN_DEVICES_PATH: /data/reports/known_devices.json
+      # Off by default: downloads a public IP blocklist from a third
+      # party (abuse.ch). Doesn't send any of your traffic anywhere, but
+      # it is still a network call out from your home server. See README.
+      THREAT_INTEL_ENABLED: "${THREAT_INTEL_ENABLED:-false}"
+      THREAT_INTEL_CACHE_PATH: /data/reports/threat_intel_cache.json
       ALERT_STATE_PATH: /data/state/alert_state.json
 
       # Alert notifications - both are opt-in and independent; leave either

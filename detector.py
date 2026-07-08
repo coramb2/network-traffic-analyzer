@@ -196,6 +196,27 @@ class AnomalyDetector:
             }, alerts)
         return alerts
 
+    def detect_threat_matches(self, matches):
+        """One-shot, whole-run check: alerts for any IP found on a
+        threat-intelligence blocklist (see threat_intel.py).
+
+        matches: {ip: {"source": str}}, as returned by
+        threat_intel.match_ips() - already filtered to only the IPs that
+        matched, so every entry here becomes an alert.
+        """
+        alerts = []
+        for ip, info in matches.items():
+            source = info.get("source", "a threat intelligence feed")
+            self._record({
+                'type': 'THREAT_INTEL_MATCH',
+                'severity': 'HIGH',
+                'timestamp': datetime.now().isoformat(),
+                'source_ip': ip,
+                'description': f'Traffic to/from an IP on a known threat blocklist ({source})',
+                'details': f'{ip} matched {source} - see the playbook for what to do next',
+            }, alerts)
+        return alerts
+
     def _is_private_ip(self, ip):
         """Check if IP is in private range"""
         if not ip:

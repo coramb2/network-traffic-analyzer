@@ -179,6 +179,34 @@ PLAYBOOKS = {
             "If it's unwelcome, remove it from your network (change Wi-Fi password, disable its switch port, or block its MAC at your router).",
         ],
     },
+    "THREAT_INTEL_MATCH": {
+        "title": "Threat Intelligence Match",
+        "what": (
+            "Traffic was seen to or from an IP address that appears on a "
+            "known threat blocklist (abuse.ch Feodo Tracker, a feed of "
+            "active botnet command-and-control servers)."
+        ),
+        "benign": (
+            "Essentially never - IPs on this list are actively-tracked "
+            "malicious infrastructure. A false positive is possible if the "
+            "IP was recently reassigned to a legitimate service after "
+            "being flagged, but this should be treated as concerning "
+            "until confirmed otherwise."
+        ),
+        "concerning": (
+            "Any match. This means a device on your network communicated "
+            "with known botnet/malware infrastructure - possible signs of "
+            "a compromised device (malware, a botnet client) reaching out "
+            "to its command-and-control server."
+        ),
+        "steps": [
+            "Identify which device on your network was the source - check the Devices panel.",
+            "Treat that device as potentially compromised: scan it for malware, check running processes, and consider isolating it from the network until checked.",
+            "Block the matched IP at your router/firewall immediately (see suggestions below).",
+            "Check whether the same device shows other alerts (new device, port scan, high connection rate) around the same time.",
+            "This is a best-effort feed covering one blocklist - a clean history elsewhere doesn't guarantee a device is safe.",
+        ],
+    },
 }
 
 
