@@ -282,6 +282,13 @@ logged out on every container restart (a fresh random key is used
 otherwise). Neither has a default - there's no factory password to leave
 unchanged.
 
+The **Traffic Trend** panel charts packets/sec and open-alert count across
+recent runs (oldest to newest) so you can see whether current traffic or
+alert volume looks normal compared to history, not just this one run in
+isolation - the one thing a per-run snapshot alone can't show you. It's
+built entirely from data `/api/runs` already returns (bounded by
+`RETENTION_RUNS`), no extra endpoint or storage needed.
+
 ### Alert Rules (allowlist + resolve)
 
 Recurring alerts for something you already know about (your own RDP jump
