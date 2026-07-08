@@ -32,6 +32,7 @@ VALID_ALERT_TYPES = {
 }
 
 RUN_ID_RE = re.compile(r"^\d{8}T\d{6}Z$")
+MAX_NOTE_LENGTH = 500
 
 app = Flask(__name__)
 
@@ -197,11 +198,17 @@ def api_rules():
         except (TypeError, ValueError):
             abort(400)
 
+    source_ip = body.get("source_ip") or None
+    if source_ip is not None and not device_names.is_valid_ip(source_ip):
+        abort(400)
+
+    note = (body.get("note") or "")[:MAX_NOTE_LENGTH]
+
     rule = alert_rules.add_rule(
         alert_type=alert_type,
-        source_ip=(body.get("source_ip") or None),
+        source_ip=source_ip,
         destination_port=destination_port,
-        note=body.get("note", ""),
+        note=note,
     )
     return jsonify(rule), 201
 
@@ -220,7 +227,8 @@ def api_alert_resolve(run_id, index):
     outcome = body.get("outcome")
     if outcome is not None and outcome not in alert_rules.OUTCOMES:
         abort(400)
-    resolved = alert_rules.mark_resolved(f"{run_id}:{index}", note=body.get("note", ""), outcome=outcome)
+    note = (body.get("note") or "")[:MAX_NOTE_LENGTH]
+    resolved = alert_rules.mark_resolved(f"{run_id}:{index}", note=note, outcome=outcome)
     return jsonify(resolved)
 
 

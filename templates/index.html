@@ -652,14 +652,14 @@ async function loadRuns() {
 
 function ruleRowHtml(rule) {
     const scope = [];
-    if (rule.source_ip) scope.push(`from <strong>${rule.source_ip}</strong>`);
-    if (rule.destination_port !== null && rule.destination_port !== undefined) scope.push(`port <strong>${rule.destination_port}</strong>`);
+    if (rule.source_ip) scope.push(`from <strong>${escapeHtml(rule.source_ip)}</strong>`);
+    if (rule.destination_port !== null && rule.destination_port !== undefined) scope.push(`port <strong>${escapeHtml(rule.destination_port)}</strong>`);
     const scopeText = scope.length ? scope.join(', ') : 'any source/port';
-    const note = rule.note ? ` — ${rule.note}` : '';
+    const note = rule.note ? ` — ${escapeHtml(rule.note)}` : '';
     return `
         <div class="rule-row">
-            <div class="rule-detail"><strong>${rule.alert_type}</strong>, ${scopeText}${note}</div>
-            <button class="btn danger" data-action="delete-rule" data-rule-id="${rule.id}">Remove</button>
+            <div class="rule-detail"><strong>${escapeHtml(rule.alert_type)}</strong>, ${scopeText}${note}</div>
+            <button class="btn danger" data-action="delete-rule" data-rule-id="${escapeHtml(rule.id)}">Remove</button>
         </div>
     `;
 }
