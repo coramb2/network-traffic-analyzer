@@ -5,6 +5,7 @@ Integrates packet capture, anomaly detection, and reporting
 """
 
 import argparse
+import os
 import sys
 import json
 from datetime import datetime
@@ -16,6 +17,7 @@ from analyzer import PacketAnalyzer
 from detector import AnomalyDetector
 from reporter import TrafficReporter
 import device_names
+import notifications
 
 console = Console()
 
@@ -193,6 +195,19 @@ Examples:
         if detector and detector.alerts:
             alerts_file = detector.export_alerts('security_alerts.json')
             console.print(f"[green]✓[/green] Security alerts exported to {alerts_file}")
+
+            # Opt-in, best-effort: no-ops unless ALERT_WEBHOOK_URL/SMTP_HOST
+            # are configured, and a delivery failure here never affects the
+            # exit status - the report is already safely on disk above.
+            notify_config = notifications.config_from_env()
+            if notify_config['webhook_url'] or notify_config['smtp']:
+                run_id = os.path.basename(os.getcwd())
+                results = notifications.notify_alerts(detector.alerts, notify_config, run_id=run_id)
+                for channel, sent in results.items():
+                    if sent is True:
+                        console.print(f"[green]✓[/green] Alert notification sent via {channel}")
+                    elif sent is False:
+                        console.print(f"[yellow]Warning: alert notification via {channel} failed[/yellow]")
 
         if args.pcap:
             console.print(f"[green]✓[/green] Raw packets saved to traffic_capture.pcap")

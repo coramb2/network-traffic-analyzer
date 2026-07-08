@@ -38,6 +38,19 @@ services:
       RESOLVE_HOSTNAMES: "${RESOLVE_HOSTNAMES:-true}"
       ALERT_STATE_PATH: /data/state/alert_state.json
 
+      # Alert notifications - both are opt-in and independent; leave either
+      # blank to disable it. See .env.example for details.
+      ALERT_WEBHOOK_URL: "${ALERT_WEBHOOK_URL:-}"
+      ALERT_NOTIFY_MIN_SEVERITY: "${ALERT_NOTIFY_MIN_SEVERITY:-LOW}"
+      DASHBOARD_URL: "${DASHBOARD_URL:-}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      SMTP_TO: "${SMTP_TO:-}"
+      SMTP_USE_TLS: "${SMTP_USE_TLS:-true}"
+
     volumes:
       - ./reports:/data/reports
       # Allowlist rules managed from the dashboard; capture only ever

@@ -162,6 +162,7 @@ network-traffic-analyzer/
 ├── network_monitor.py          # Integrated CLI application
 ├── alert_rules.py              # Shared allowlist/resolved-alert state (both containers)
 ├── device_names.py             # Shared device naming + reverse-DNS resolution
+├── notifications.py            # Webhook/email alert digests (stdlib only)
 ├── webapp.py                   # Dashboard: live view, run history, alert workflow
 ├── templates/index.html        # Dashboard frontend
 ├── static/vendor/chart.min.js  # Vendored Chart.js (no CDN dependency)
@@ -331,6 +332,28 @@ matching firewall rules in a few formats (`ufw`, `iptables`, `nftables`) plus
 a plain-English description of what to do on your router, each with a
 **Copy** button. These are suggestions only - nothing here is ever applied
 automatically; you decide whether and how to act on them.
+
+### Alert Notifications
+
+Opening the dashboard is the only way to learn about a new alert otherwise
+— for anything you'd actually want to know about promptly, configure a
+notification channel and skip that. When a completed capture run has new
+alerts (past the allowlist), a digest is sent to whichever of these is
+configured in `.env` (`notifications.py`); both are optional and
+independent, and neither is on by default:
+
+- **Webhook** (`ALERT_WEBHOOK_URL`) — posts `{"text": "..."}`, which works
+  as-is with Slack/Discord/Mattermost incoming webhooks.
+- **Email** (`SMTP_HOST` + `SMTP_TO` at minimum) — sent via SMTP with
+  `smtplib`, no third-party service required.
+
+`ALERT_NOTIFY_MIN_SEVERITY` (default `LOW`, i.e. everything) filters what's
+worth a notification versus just showing up in the dashboard on its own.
+One digest is sent per run, not one per alert, since a single port scan
+can produce dozens of individual alerts — the digest groups them by
+severity/type with a handful of examples. A delivery failure (bad
+credentials, webhook host down) is logged and otherwise ignored; it never
+affects the capture or the reports already written to disk.
 
 ### Device Names
 
