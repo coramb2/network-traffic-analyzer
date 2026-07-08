@@ -63,6 +63,11 @@ services:
       REPORTS_ROOT: /data/reports
       ALERT_STATE_PATH: /data/state/alert_state.json
       DEVICE_NAMES_PATH: /data/state/device_names.json
+      # Required: the dashboard refuses to start without it (see webapp.py).
+      DASHBOARD_PASSWORD: "${DASHBOARD_PASSWORD:?Set DASHBOARD_PASSWORD in your .env file}"
+      # Optional but recommended: without it, a fresh random key is used
+      # each start, which logs everyone out on every container restart.
+      DASHBOARD_SECRET_KEY: "${DASHBOARD_SECRET_KEY:-}"
 
     volumes:
       - ./reports:/data/reports:ro
