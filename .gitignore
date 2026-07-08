@@ -66,3 +66,6 @@ Thumbs.db
 # Test data
 test_captures/
 pcap_files/
+
+# pytest
+.pytest_cache/
