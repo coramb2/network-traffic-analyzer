@@ -19,6 +19,7 @@ from reporter import TrafficReporter
 import device_names
 import geoip
 import notifications
+import threat_intel
 import vendor_lookup
 
 console = Console()
@@ -74,6 +75,8 @@ Examples:
                        help='Skip reverse-DNS lookups (no device-name suggestions)')
     parser.add_argument('--geoip', action='store_true',
                        help='Look up country/org for public IPs (sends IPs to a third-party API - see README)')
+    parser.add_argument('--threat-intel', action='store_true',
+                       help='Check captured IPs against a public threat blocklist (requires --alerts; see README)')
 
     args = parser.parse_args()
     
@@ -151,12 +154,28 @@ Examples:
                 if new_device_alerts:
                     console.print(f"[yellow]![/yellow] {len(new_device_alerts)} new device(s) seen for the first time")
 
+            # Threat-intel blocklist matching - opt-in (--threat-intel)
+            # since, unlike the local-only checks above, it's a network
+            # call to a third party (downloading a public IP blocklist,
+            # not sending it any of our traffic). Checked against every
+            # captured IP, not just the top ones: a low-volume C2 beacon
+            # is exactly the kind of traffic that wouldn't make a top-20
+            # list but is the most important thing to catch.
+            if args.threat_intel:
+                console.print("[yellow]Checking IPs against threat intelligence feed...[/yellow]")
+                threat_matches = threat_intel.match_ips(list(analyzer.ip_stats.keys()))
+                threat_alerts = detector.detect_threat_matches(threat_matches)
+                if threat_alerts:
+                    console.print(f"[red]⚠[/red]  {len(threat_alerts)} IP(s) matched a known threat blocklist")
+
             alert_count = len(detector.alerts)
             if alert_count > 0:
                 console.print(f"[red]⚠[/red]  Found {alert_count} security alerts")
             else:
                 console.print("[green]✓[/green] No suspicious activity detected")
-        
+        elif args.threat_intel:
+            console.print("[yellow]--threat-intel has no effect without --alerts[/yellow]")
+
         # Generate reports
         console.print("\n[yellow]Generating reports...[/yellow]")
 

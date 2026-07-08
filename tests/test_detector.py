@@ -290,3 +290,39 @@ def test_new_device_alerts_added_to_running_alert_list():
     detector.detect_new_devices([{"ip": "192.168.1.5", "mac": None}])
     assert len(detector.alerts) == 2
     assert {a["type"] for a in detector.alerts} == {"SUSPICIOUS_PORT", "NEW_DEVICE"}
+
+
+# --- detect_threat_matches -------------------------------------------------
+
+def test_threat_matches_produce_high_severity_alerts():
+    detector = AnomalyDetector()
+    alerts = detector.detect_threat_matches({"1.2.3.4": {"source": "abuse.ch Feodo Tracker"}})
+    assert len(alerts) == 1
+    assert alerts[0]["type"] == "THREAT_INTEL_MATCH"
+    assert alerts[0]["severity"] == "HIGH"
+    assert alerts[0]["source_ip"] == "1.2.3.4"
+    assert "abuse.ch Feodo Tracker" in alerts[0]["details"]
+
+
+def test_no_matches_produce_no_alerts():
+    detector = AnomalyDetector()
+    assert detector.detect_threat_matches({}) == []
+    assert detector.alerts == []
+
+
+def test_threat_matches_respect_allowlist():
+    import alert_rules
+    alert_rules.add_rule(alert_type="THREAT_INTEL_MATCH", source_ip="1.2.3.4")
+
+    detector = AnomalyDetector()  # loads allowlist on init, after the rule was added
+    alerts = detector.detect_threat_matches({"1.2.3.4": {"source": "abuse.ch Feodo Tracker"}})
+    assert alerts == []
+    assert detector.alerts == []
+
+
+def test_threat_matches_added_to_running_alert_list():
+    detector = AnomalyDetector()
+    detector.analyze_packet(make_packet(dst_port=3389))  # one SUSPICIOUS_PORT alert
+    detector.detect_threat_matches({"1.2.3.4": {"source": "abuse.ch Feodo Tracker"}})
+    assert len(detector.alerts) == 2
+    assert {a["type"] for a in detector.alerts} == {"SUSPICIOUS_PORT", "THREAT_INTEL_MATCH"}

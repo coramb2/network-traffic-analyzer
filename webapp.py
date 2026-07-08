@@ -35,6 +35,7 @@ VALID_ALERT_TYPES = {
     "UNUSUAL_PROTOCOL_RATIO",
     "PRIVATE_TO_PUBLIC",
     "NEW_DEVICE",
+    "THREAT_INTEL_MATCH",
 }
 
 RUN_ID_RE = re.compile(r"^\d{8}T\d{6}Z$")
