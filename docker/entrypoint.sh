@@ -15,6 +15,7 @@ IFACE="${IFACE:-}"
 CAPTURE_FILTER="${CAPTURE_FILTER:-}"
 CAPTURE_PCAP="${CAPTURE_PCAP:-false}"
 RESOLVE_HOSTNAMES="${RESOLVE_HOSTNAMES:-true}"
+GEOIP_ENABLED="${GEOIP_ENABLED:-false}"
 
 mkdir -p "$REPORTS_ROOT"
 
@@ -36,6 +37,9 @@ while true; do
     fi
     if [ "$RESOLVE_HOSTNAMES" != "true" ]; then
         args+=(--no-hostnames)
+    fi
+    if [ "$GEOIP_ENABLED" = "true" ]; then
+        args+=(--geoip)
     fi
 
     echo "[$(date -u +%FT%TZ)] starting capture run $run_id (${CAPTURE_DURATION}s)"

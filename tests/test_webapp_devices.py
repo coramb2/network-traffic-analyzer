@@ -31,13 +31,14 @@ def client(app_ctx):
         yield c
 
 
-def make_run_with_ips(reports_root, run_id, top_ips, hostnames=None):
+def make_run_with_ips(reports_root, run_id, top_ips, hostnames=None, geoip=None):
     run_dir = reports_root / run_id
     run_dir.mkdir()
     (run_dir / "traffic_analysis.json").write_text(json.dumps({
         "total_packets": sum(top_ips.values()),
         "top_ips": top_ips,
         "hostnames": hostnames or {},
+        "geoip": geoip or {},
     }))
 
 
@@ -98,3 +99,24 @@ def test_seen_devices_includes_manually_named_ip_even_if_unseen(client):
     devices = {d["ip"]: d for d in resp.get_json()}
     assert devices["192.168.1.99"]["name"] == "Ghost Device"
     assert devices["192.168.1.99"]["packet_count"] == 0
+
+
+def test_seen_devices_includes_geoip_newest_run_wins(app_ctx, client):
+    _, reports_root = app_ctx
+    old_geo = {"country_code": "US", "org": "Old ISP"}
+    new_geo = {"country_code": "US", "org": "New ISP"}
+    make_run_with_ips(reports_root, "20260101T000000Z", {"8.8.8.8": 10}, geoip={"8.8.8.8": old_geo})
+    make_run_with_ips(reports_root, "20260102T000000Z", {"8.8.8.8": 20}, geoip={"8.8.8.8": new_geo})
+
+    resp = client.get("/api/seen-devices")
+    devices = {d["ip"]: d for d in resp.get_json()}
+    assert devices["8.8.8.8"]["geoip"]["org"] == "New ISP"
+
+
+def test_seen_devices_geoip_null_for_private_ips(app_ctx, client):
+    _, reports_root = app_ctx
+    make_run_with_ips(reports_root, "20260101T000000Z", {"192.168.1.5": 10})  # no geoip entry for it
+
+    resp = client.get("/api/seen-devices")
+    devices = {d["ip"]: d for d in resp.get_json()}
+    assert devices["192.168.1.5"]["geoip"] is None

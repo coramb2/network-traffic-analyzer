@@ -782,14 +782,21 @@ async function loadRules() {
     empty.style.display = rules.length ? 'none' : 'block';
 }
 
+function geoipLineHtml(geo) {
+    if (!geo) return '';
+    const parts = [geo.country_code, geo.org].filter(Boolean).map(escapeHtml);
+    if (!parts.length) return '';
+    return `<br><span class="ip-sub">🌍 ${parts.join(' · ')}</span>`;
+}
+
 function deviceRowHtml(dev) {
     const suggestion = dev.hostname
         ? `<span class="suggest-chip" data-action="use-suggestion" data-ip="${dev.ip}"
                 data-name="${escapeHtml(dev.hostname)}">${escapeHtml(dev.hostname)}</span>`
         : '<span class="updated-at">—</span>';
-    const seen = dev.packet_count
+    const seen = (dev.packet_count
         ? `<span class="ip-sub">${dev.ip}</span> · ${dev.packet_count} pkts`
-        : `<span class="ip-sub">${dev.ip}</span>`;
+        : `<span class="ip-sub">${dev.ip}</span>`) + geoipLineHtml(dev.geoip);
     return `
         <tr data-device-ip="${dev.ip}">
             <td>${seen}</td>

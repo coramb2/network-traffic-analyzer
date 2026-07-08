@@ -369,26 +369,35 @@ def api_seen_devices():
     across the scanned runs so the busiest devices sort to the top.
     """
     names = device_names.load_names()
-    seen = {}  # ip -> {"packet_count": int, "hostname": str|None}
+    seen = {}  # ip -> {"packet_count": int, "hostname": str|None, "geoip": dict|None}
 
     for run_id in list_run_ids()[:SEEN_DEVICES_RUN_LIMIT]:
         analysis = read_json(os.path.join(REPORTS_ROOT, run_id, "traffic_analysis.json"))
         if not analysis:
             continue
         hostnames = analysis.get("hostnames", {})
+        geo = analysis.get("geoip", {})
         for ip, count in analysis.get("top_ips", {}).items():
-            entry = seen.setdefault(ip, {"packet_count": 0, "hostname": None})
+            entry = seen.setdefault(ip, {"packet_count": 0, "hostname": None, "geoip": None})
             entry["packet_count"] += count
-            # Runs are newest-first, so only fill hostname if not already set.
+            # Runs are newest-first, so only fill hostname/geoip if not already set.
             if entry["hostname"] is None and hostnames.get(ip):
                 entry["hostname"] = hostnames[ip]
+            if entry["geoip"] is None and geo.get(ip):
+                entry["geoip"] = geo[ip]
 
     # Include manually-named IPs even if they weren't in the scanned runs.
     for ip in names:
-        seen.setdefault(ip, {"packet_count": 0, "hostname": None})
+        seen.setdefault(ip, {"packet_count": 0, "hostname": None, "geoip": None})
 
     devices = [
-        {"ip": ip, "packet_count": v["packet_count"], "hostname": v["hostname"], "name": names.get(ip)}
+        {
+            "ip": ip,
+            "packet_count": v["packet_count"],
+            "hostname": v["hostname"],
+            "geoip": v["geoip"],
+            "name": names.get(ip),
+        }
         for ip, v in seen.items()
     ]
     devices.sort(key=lambda d: d["packet_count"], reverse=True)

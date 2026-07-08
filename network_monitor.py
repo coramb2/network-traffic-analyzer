@@ -17,6 +17,7 @@ from analyzer import PacketAnalyzer
 from detector import AnomalyDetector
 from reporter import TrafficReporter
 import device_names
+import geoip
 import notifications
 
 console = Console()
@@ -70,6 +71,8 @@ Examples:
                        help='Analyze an existing .pcap file instead of capturing live traffic')
     parser.add_argument('--no-hostnames', action='store_true',
                        help='Skip reverse-DNS lookups (no device-name suggestions)')
+    parser.add_argument('--geoip', action='store_true',
+                       help='Look up country/org for public IPs (sends IPs to a third-party API - see README)')
 
     args = parser.parse_args()
     
@@ -151,6 +154,16 @@ Examples:
             if hostnames:
                 console.print(f"[green]✓[/green] Resolved {len(hostnames)} hostname(s)")
 
+        # GeoIP/org lookup for public IPs only (private ones are skipped
+        # inside resolve_geoip) - opt-in via --geoip, since unlike the
+        # reverse-DNS lookup above this sends IPs to a third-party API.
+        geo_info = {}
+        if args.geoip and top_ip_list:
+            console.print("[yellow]Resolving GeoIP info...[/yellow]")
+            geo_info = geoip.resolve_geoip(top_ip_list)
+            if geo_info:
+                console.print(f"[green]✓[/green] Resolved GeoIP for {len(geo_info)} IP(s)")
+
         # Prepare analyzer data for reporting
         report_duration_seconds = (datetime.now() - analyzer.start_time).seconds
         analyzer_data = {
@@ -166,6 +179,7 @@ Examples:
                          sorted(analyzer.port_stats.items(),
                                key=lambda x: x[1], reverse=True)[:20]},
             'hostnames': hostnames,
+            'geoip': geo_info,
             'recent_packets': analyzer.packets[-100:]
         }
         
@@ -181,7 +195,7 @@ Examples:
         reporter = TrafficReporter(analyzer_data, detector_data)
         
         # Export JSON (always)
-        analyzer.export_to_json(args.output, hostnames=hostnames)
+        analyzer.export_to_json(args.output, hostnames=hostnames, geoip=geo_info)
         
         # Export CSV if requested
         if args.csv:
