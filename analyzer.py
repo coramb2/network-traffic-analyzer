@@ -164,10 +164,13 @@ class PacketAnalyzer:
         hostnames, if given, is a { ip: reverse-DNS-name } map stored
         alongside the stats so the dashboard can suggest device names.
         """
+        duration_seconds = (datetime.now() - self.start_time).seconds
         output = {
             'analysis_time': datetime.now().isoformat(),
-            'duration_seconds': (datetime.now() - self.start_time).seconds,
+            'duration_seconds': duration_seconds,
             'total_packets': self.packet_count,
+            'interface': self.interface or 'default',
+            'packets_per_second': round(self.packet_count / max(duration_seconds, 1), 2),
             'protocol_stats': dict(self.protocol_stats),
             'top_ips': dict(sorted(self.ip_stats.items(), key=lambda x: x[1], reverse=True)[:20]),
             'top_ports': dict(sorted(self.port_stats.items(), key=lambda x: x[1], reverse=True)[:20]),

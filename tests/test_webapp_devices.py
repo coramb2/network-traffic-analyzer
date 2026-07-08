@@ -11,6 +11,7 @@ def app_ctx(tmp_path, monkeypatch):
     reports_root = tmp_path / "reports"
     reports_root.mkdir()
     monkeypatch.setenv("REPORTS_ROOT", str(reports_root))
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "test-password")
 
     import webapp
     importlib.reload(webapp)
@@ -22,6 +23,11 @@ def app_ctx(tmp_path, monkeypatch):
 def client(app_ctx):
     webapp, _ = app_ctx
     with webapp.app.test_client() as c:
+        # Every route except /login and static assets requires a session
+        # since the dashboard-auth feature landed - log straight in rather
+        # than going through the login form/throttle.
+        with c.session_transaction() as sess:
+            sess["authenticated"] = True
         yield c
 
 

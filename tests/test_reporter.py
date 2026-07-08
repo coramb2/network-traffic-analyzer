@@ -16,6 +16,8 @@ def in_tmp_dir(tmp_path, monkeypatch):
 SAMPLE_ANALYZER_DATA = {
     "duration_seconds": 60,
     "total_packets": 150,
+    "interface": "eth0",
+    "packets_per_second": 2.5,
     "protocol_stats": {"TCP": 100, "UDP": 40, "ICMP": 10},
     "top_ips": {"192.168.1.1": 90, "192.168.1.2": 60},
     "top_ports": {"443": 80, "80": 40, "53": 30},
@@ -50,6 +52,16 @@ def test_generate_summary_report_includes_key_stats():
     assert "192.168.1.1" in summary
     assert "Total Alerts: 2" in summary
     assert "PORT_SCAN" in summary
+    assert "Interface: eth0" in summary
+    assert "2.5" in summary  # packets/sec
+
+
+def test_generate_summary_report_defaults_when_interface_and_pps_missing():
+    """Older, already-captured runs won't have these fields at all."""
+    data = {k: v for k, v in SAMPLE_ANALYZER_DATA.items() if k not in ("interface", "packets_per_second")}
+    reporter = TrafficReporter(data)
+    summary = reporter.generate_summary_report()
+    assert "Interface: default" in summary
 
 
 def test_generate_summary_report_without_detector_data():
@@ -105,6 +117,8 @@ def test_generate_html_report_contains_stats_and_alerts(tmp_path):
     assert "Possible port scan detected from 9.9.9.9" in html
     # Chart.js is loaded with a pinned integrity hash, not bare from a CDN.
     assert 'integrity="sha384-' in html
+    assert "eth0" in html
+    assert "2.5" in html
 
 
 def test_generate_html_report_omits_alerts_section_when_no_alerts(tmp_path):

@@ -12,6 +12,7 @@ def app_ctx(tmp_path, monkeypatch):
     reports_root = tmp_path / "reports"
     reports_root.mkdir()
     monkeypatch.setenv("REPORTS_ROOT", str(reports_root))
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "test-password")
 
     import webapp
     importlib.reload(webapp)
@@ -23,6 +24,11 @@ def app_ctx(tmp_path, monkeypatch):
 def client(app_ctx):
     webapp, _ = app_ctx
     with webapp.app.test_client() as c:
+        # Every route except /login and static assets requires a session
+        # since the dashboard-auth feature landed - log straight in rather
+        # than going through the login form/throttle.
+        with c.session_transaction() as sess:
+            sess["authenticated"] = True
         yield c
 
 
@@ -47,6 +53,30 @@ def make_run(reports_root, run_id, packets=42, alerts=None, extra_analysis=None)
             json.dumps({"total_alerts": len(alerts), "alerts": alerts})
         )
     return run_dir
+
+
+def test_api_runs_includes_interface_and_pps_when_present(app_ctx, client):
+    _, reports_root = app_ctx
+    make_run(reports_root, "20260101T000000Z", extra_analysis={"interface": "eth0", "packets_per_second": 3.7})
+
+    resp = client.get("/api/runs")
+    run = resp.get_json()[0]
+    assert run["interface"] == "eth0"
+    assert run["packets_per_second"] == 3.7
+
+
+def test_api_runs_defaults_interface_and_pps_for_older_runs(app_ctx, client):
+    """Regression: interface/packets_per_second were only ever tracked
+    live, never persisted into traffic_analysis.json, so completed runs
+    (and every run captured before this field existed) need a graceful
+    default rather than a KeyError."""
+    _, reports_root = app_ctx
+    make_run(reports_root, "20260101T000000Z")  # no interface/pps in the raw analysis
+
+    resp = client.get("/api/runs")
+    run = resp.get_json()[0]
+    assert run["interface"] == "default"
+    assert run["packets_per_second"] == 0
 
 
 def test_api_runs_empty_when_no_runs(client):
