@@ -7,12 +7,17 @@ container writes to and serves a live-updating dashboard plus a browser
 for past runs. Never touches packet capture: no NET_RAW/NET_ADMIN needed.
 """
 
+import hmac
 import json
 import os
 import re
-from datetime import datetime, timezone
+import secrets
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
-from flask import Flask, abort, jsonify, render_template, request, send_from_directory
+from flask import Flask, abort, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 
 import alert_playbooks
 import alert_rules
@@ -33,7 +38,90 @@ VALID_ALERT_TYPES = {
 
 RUN_ID_RE = re.compile(r"^\d{8}T\d{6}Z$")
 
+# The dashboard can silently suppress security alerts (allowlist) and
+# exposes raw packet captures, so - unlike the read-only report files it
+# serves - it refuses to run without a login gate. No insecure default.
+DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD")
+if not DASHBOARD_PASSWORD:
+    sys.exit(
+        "DASHBOARD_PASSWORD is not set. The dashboard can suppress security "
+        "alerts (allowlist) and serves packet captures, so it refuses to "
+        "start without a login password. Set DASHBOARD_PASSWORD in your "
+        ".env file."
+    )
+
 app = Flask(__name__)
+
+_secret_key = os.environ.get("DASHBOARD_SECRET_KEY")
+if not _secret_key:
+    print(
+        "WARNING: DASHBOARD_SECRET_KEY is not set - using a random key for "
+        "this process, so everyone will be logged out on restart. Set "
+        "DASHBOARD_SECRET_KEY in your .env file to keep sessions across "
+        "restarts.",
+        file=sys.stderr,
+    )
+    _secret_key = secrets.token_hex(32)
+app.secret_key = _secret_key
+
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+)
+
+# Minimal brute-force throttle: at most one login attempt per second per
+# client IP. Not a substitute for a real rate limiter, but cheap and stops
+# naive automated guessing without adding a dependency.
+_LOGIN_THROTTLE_SECONDS = 1
+_last_login_attempt = {}
+
+
+def _safe_next_path(path):
+    """Only allow redirecting to a same-site relative path after login -
+    guards against an open-redirect via a crafted ?next= value."""
+    if not path or not path.startswith("/") or path.startswith("//"):
+        return None
+    if urlsplit(path).netloc:
+        return None
+    return path
+
+
+@app.before_request
+def _require_login():
+    if request.endpoint in ("login", "static"):
+        return
+    if session.get("authenticated"):
+        return
+    if request.path.startswith("/api/"):
+        abort(401)
+    return redirect(url_for("login", next=request.path))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        client_ip = request.remote_addr or "unknown"
+        wait = _LOGIN_THROTTLE_SECONDS - (time.monotonic() - _last_login_attempt.get(client_ip, 0))
+        if wait > 0:
+            time.sleep(wait)
+        _last_login_attempt[client_ip] = time.monotonic()
+
+        if hmac.compare_digest(request.form.get("password", ""), DASHBOARD_PASSWORD):
+            session.clear()
+            session["authenticated"] = True
+            session.permanent = True
+            return redirect(_safe_next_path(request.form.get("next")) or url_for("index"))
+        error = "Incorrect password."
+
+    return render_template("login.html", error=error, next=_safe_next_path(request.args.get("next")) or "")
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 def safe_run_dir(run_id):

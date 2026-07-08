@@ -217,7 +217,10 @@ ip -brief link
 # Configure
 cp .env.example .env
 # edit .env: set IFACE to the interface above, adjust CAPTURE_DURATION/
-# INTERVAL_SECONDS/RETENTION_RUNS to taste
+# INTERVAL_SECONDS/RETENTION_RUNS to taste, and set DASHBOARD_PASSWORD
+# (required - the dashboard won't start without it, see "Web Dashboard" below)
+echo "DASHBOARD_PASSWORD=$(openssl rand -base64 24)" >> .env
+echo "DASHBOARD_SECRET_KEY=$(openssl rand -hex 32)" >> .env
 
 # The container runs as a fixed non-root uid (10001) for defense in depth —
 # make the host-side reports directory writable by it
@@ -251,6 +254,14 @@ It's a separate container from the capture service on purpose: it only
 needs read access to `./reports` (mounted `:ro`) and one published port —
 no `NET_RAW`/`NET_ADMIN`, no host networking. Restarting or rebuilding it
 never touches the capture container.
+
+**Login is required.** The dashboard can silently suppress security alerts
+(allowlist) and serves raw packet captures, so unlike the report files
+themselves it refuses to start without `DASHBOARD_PASSWORD` set in `.env`.
+Sessions last 30 days; set `DASHBOARD_SECRET_KEY` too or everyone gets
+logged out on every container restart (a fresh random key is used
+otherwise). Neither has a default - there's no factory password to leave
+unchanged.
 
 ### Alert Rules (allowlist + resolve)
 
