@@ -1,3 +1,3 @@
 # Test dependencies. Install alongside both runtime requirement files:
 #   pip install -r requirements.txt -r requirements-dashboard.txt -r requirements-dev.txt
-pytest==8.3.3
+pytest==9.0.3
