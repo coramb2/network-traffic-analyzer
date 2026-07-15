@@ -58,6 +58,21 @@ if not DASHBOARD_PASSWORD:
 
 app = Flask(__name__)
 
+# Off by default: trusting X-Forwarded-* headers when nothing is actually
+# stripping/setting them at the network edge would let any client spoof
+# its own source IP (defeating the login throttle) or scheme. Set this
+# only when the dashboard genuinely sits behind a reverse proxy that
+# terminates TLS and sets these headers itself - see the README's
+# "TLS / Reverse Proxy" section.
+BEHIND_TLS_PROXY = os.environ.get("DASHBOARD_BEHIND_TLS_PROXY", "").strip().lower() in ("1", "true", "yes")
+if BEHIND_TLS_PROXY:
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    # x_for/x_proto/x_host=1: trust exactly one hop (the proxy in front),
+    # not an arbitrary chain - matches the single-reverse-proxy topology
+    # this is documented for.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
 _secret_key = os.environ.get("DASHBOARD_SECRET_KEY")
 if not _secret_key:
     print(
@@ -73,6 +88,12 @@ app.secret_key = _secret_key
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
+    # Only marked Secure when a TLS-terminating proxy is confirmed to be
+    # in front (see BEHIND_TLS_PROXY above) - otherwise the dashboard's
+    # own plain-HTTP listener would never be able to set the cookie at
+    # all, since browsers drop a Secure cookie set over a non-HTTPS
+    # connection.
+    SESSION_COOKIE_SECURE=BEHIND_TLS_PROXY,
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
     # Every request body this app handles is a small JSON object (a device
     # name, a rule, a resolution note) - a few hundred bytes at most. 64KB
