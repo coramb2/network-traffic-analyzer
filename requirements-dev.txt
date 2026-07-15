@@ -2,3 +2,6 @@
 #   pip install -r requirements.txt -r requirements-dashboard.txt -r requirements-dev.txt
 pytest==9.0.3
 ruff==0.15.21
+# Browser-driven dashboard tests (tests/test_dashboard_browser.py) - also
+# needs `playwright install --with-deps chromium` (see CI workflow).
+pytest-playwright==0.8.0

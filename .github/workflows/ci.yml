@@ -27,6 +27,11 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt -r requirements-dashboard.txt -r requirements-dev.txt
 
+      # For tests/test_dashboard_browser.py - the rest of the suite never
+      # needs a real browser.
+      - name: Install Playwright browser
+        run: playwright install --with-deps chromium
+
       # Cheap syntax/import sanity check, distinct from test failures -
       # catches a broken module even if nothing happens to import it in
       # the test suite.
