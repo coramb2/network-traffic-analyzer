@@ -19,6 +19,17 @@ from datetime import datetime, timezone
 OUTCOMES = {"known", "false_positive", "benign", "mitigated", "investigating", "threat"}
 OPEN_OUTCOMES = {"investigating"}
 
+# Both lists are loaded and fully JSON-parsed on nearly every dashboard
+# API request (load_state()), so an unbounded list here isn't just disk
+# usage - it's a per-request cost that grows forever. webapp.py validates
+# that a resolve/unresolve call targets a real alert before it ever
+# reaches mark_resolved, which is the actual fix for that path; these
+# caps are defense in depth against any other route (present or future)
+# growing either list without that same check. Both are far above what
+# any real home network would ever legitimately need.
+MAX_ALLOWLIST_RULES = 2000
+MAX_RESOLVED_ENTRIES = 5000
+
 
 def _state_path():
     return os.environ.get("ALERT_STATE_PATH", "alert_state.json")
@@ -62,6 +73,8 @@ def is_allowlisted(alert, rules):
 
 def add_rule(alert_type, source_ip=None, destination_port=None, note=""):
     data = load_state()
+    if len(data["allowlist"]) >= MAX_ALLOWLIST_RULES:
+        data["allowlist"].pop(0)  # drop oldest
     rule = {
         "id": uuid.uuid4().hex[:12],
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -86,6 +99,8 @@ def remove_rule(rule_id):
 def mark_resolved(alert_key, note="", outcome=None):
     data = load_state()
     data["resolved"] = [r for r in data["resolved"] if r["alert_key"] != alert_key]
+    if len(data["resolved"]) >= MAX_RESOLVED_ENTRIES:
+        data["resolved"].pop(0)  # drop oldest
     data["resolved"].append(
         {
             "alert_key": alert_key,
