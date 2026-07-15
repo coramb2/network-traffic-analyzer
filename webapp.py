@@ -446,6 +446,8 @@ def api_devices():
     if not device_names.is_valid_ip(ip):
         abort(400)
     mac = (body.get("mac") or "").strip() or None
+    if mac and not device_names.is_valid_mac(mac):
+        abort(400)
     names = device_names.set_name(ip, body.get("name", ""), mac=mac)
     return jsonify(names)
 

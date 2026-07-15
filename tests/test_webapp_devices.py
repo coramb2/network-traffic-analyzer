@@ -289,6 +289,16 @@ def test_device_trend_label_survives_ip_change_via_mac(app_ctx, client):
     assert devices["192.168.1.77"]["label"] == "Cora's Laptop"
 
 
+def test_post_device_rejects_invalid_mac(client):
+    resp = client.post("/api/devices", json={
+        "ip": "192.168.1.50", "name": "Cora's Laptop", "mac": "not-a-mac",
+    })
+    assert resp.status_code == 400
+
+    import device_names
+    assert device_names.load_mac_names() == {}
+
+
 def test_delete_device_with_mac_query_param_clears_mac_name(client):
     client.post("/api/devices", json={"ip": "192.168.1.50", "name": "Thing", "mac": "aa:bb:cc:dd:ee:ff"})
     resp = client.delete("/api/devices/192.168.1.50?mac=aa:bb:cc:dd:ee:ff")
