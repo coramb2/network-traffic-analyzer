@@ -8,8 +8,11 @@ or a unit file losing a hardening directive during an edit.
 """
 
 import re
+import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SYSTEMD_DIR = REPO_ROOT / "systemd"
@@ -124,6 +127,55 @@ def test_service_units_are_hardened():
         assert "User=root" not in text
 
 
+def test_service_units_deny_unneeded_kernel_and_namespace_surfaces():
+    directives = [
+        "ProtectKernelTunables=yes",
+        "ProtectKernelModules=yes",
+        "ProtectKernelLogs=yes",
+        "ProtectControlGroups=yes",
+        "ProtectClock=yes",
+        "ProtectHostname=yes",
+        "RestrictNamespaces=yes",
+        "RestrictSUIDSGID=yes",
+        "RestrictRealtime=yes",
+        "LockPersonality=yes",
+    ]
+    for name in UNIT_FILES:
+        text = (SYSTEMD_DIR / name).read_text()
+        for directive in directives:
+            assert directive in text, f"{name} is missing {directive}"
+
+
+def test_service_units_restrict_address_families_to_what_they_actually_use():
+    analyzer_text = (SYSTEMD_DIR / "network-traffic-analyzer.service").read_text()
+    dashboard_text = (SYSTEMD_DIR / "network-traffic-dashboard.service").read_text()
+
+    # Capture needs raw sockets (AF_PACKET) and the netlink queries scapy
+    # makes for interface/route info - the dashboard needs neither.
+    assert "AF_PACKET" in analyzer_text
+    assert "AF_NETLINK" in analyzer_text
+    assert "AF_PACKET" not in dashboard_text
+    assert "AF_NETLINK" not in dashboard_text
+
+    # Both do plain IP networking and may hit a local resolver socket.
+    for text in (analyzer_text, dashboard_text):
+        assert "RestrictAddressFamilies=" in text
+        assert "AF_INET " in text or text.rstrip().endswith("AF_INET")
+        assert "AF_INET6" in text
+        assert "AF_UNIX" in text
+
+
+def test_only_dashboard_denies_writable_executable_memory():
+    """The capture service shells out to tcpdump and drives scapy's C-level
+    packet parsing - MemoryDenyWriteExecute is skipped there deliberately
+    (no way to verify it against a real capture), unlike the dashboard,
+    which is a plain Flask app with no such dependency."""
+    analyzer_text = (SYSTEMD_DIR / "network-traffic-analyzer.service").read_text()
+    dashboard_text = (SYSTEMD_DIR / "network-traffic-dashboard.service").read_text()
+    assert "MemoryDenyWriteExecute=yes" in dashboard_text
+    assert not re.search(r"^MemoryDenyWriteExecute=", analyzer_text, re.MULTILINE)
+
+
 def test_capture_service_grants_only_packet_capture_capabilities():
     text = (SYSTEMD_DIR / "network-traffic-analyzer.service").read_text()
     assert "AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN" in text
@@ -155,3 +207,22 @@ def test_env_example_files_are_referenced_by_install_sh():
     install_text = (SYSTEMD_DIR / "install.sh").read_text()
     assert "capture.env.example" in install_text
     assert "dashboard.env.example" in install_text
+
+
+@pytest.mark.skipif(shutil.which("systemd-analyze") is None, reason="systemd-analyze not available")
+def test_unit_files_pass_systemd_analyze_verify(tmp_path):
+    """Catches a directive name typo'd badly enough that systemd itself
+    would reject the unit outright - ExecStart/EnvironmentFile point at
+    paths that only exist on a real deployment, so those two lines are
+    swapped for stand-ins verify can actually resolve."""
+    for name in UNIT_FILES:
+        text = (SYSTEMD_DIR / name).read_text()
+        text = re.sub(r"^ExecStart=.*$", "ExecStart=/bin/true", text, flags=re.MULTILINE)
+        text = re.sub(r"^EnvironmentFile=.*\n", "", text, flags=re.MULTILINE)
+        unit_path = tmp_path / name
+        unit_path.write_text(text)
+
+        result = subprocess.run(
+            ["systemd-analyze", "verify", str(unit_path)], capture_output=True, text=True
+        )
+        assert result.returncode == 0, result.stderr

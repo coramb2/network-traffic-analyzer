@@ -591,6 +591,20 @@ journalctl -u network-traffic-dashboard -f   # tail dashboard logs
   running as root or as the same user as the other.
 - **`Restart=on-failure`**: same self-healing behavior as Docker Compose's
   `restart: unless-stopped`.
+- **Kernel/namespace lockdown** (`ProtectKernelTunables`,
+  `ProtectKernelModules`, `ProtectKernelLogs`, `ProtectControlGroups`,
+  `ProtectClock`, `ProtectHostname`, `RestrictNamespaces`,
+  `RestrictSUIDSGID`, `RestrictRealtime`, `LockPersonality`,
+  `RestrictAddressFamilies`): neither service has any legitimate reason
+  to touch these kernel surfaces, load a module, create a namespace, or
+  use an address family it doesn't actually need, so each is denied
+  outright rather than left available-but-unused - containers get most
+  of this for free from their own namespace/seccomp defaults, systemd
+  units don't unless asked. The dashboard additionally sets
+  `MemoryDenyWriteExecute=yes`; the capture service doesn't, since it
+  shells out to `tcpdump` and drives scapy's C-level packet parsing, and
+  there's no way in the environment this was hardened in to exercise a
+  real capture against live traffic and confirm that wouldn't break it.
 
 Everything else — `GEOIP_ENABLED`, `RESOLVE_HOSTNAMES`, alert
 notifications, retention — is configured identically to the Docker

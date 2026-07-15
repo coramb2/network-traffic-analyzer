@@ -35,5 +35,27 @@ ProtectHome=yes
 PrivateTmp=yes
 ReadWritePaths=/var/lib/network-traffic-analyzer/reports
 
+# Further lockdown: none of these kernel/namespace/privilege-escalation
+# surfaces are needed for packet capture, so deny them outright. Stops
+# short of MemoryDenyWriteExecute and a syscall filter here (unlike the
+# dashboard service) - this service shells out to tcpdump and drives
+# scapy's C-level packet parsing, and there's no way to exercise a real
+# capture against live traffic in the environment this was hardened in
+# to confirm either wouldn't break it.
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+# AF_PACKET for raw capture, AF_NETLINK for interface/route queries scapy
+# makes under the hood, AF_INET/AF_INET6/AF_UNIX for the reverse-DNS
+# lookups run against captured IPs after a run.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_PACKET AF_NETLINK
+
 [Install]
 WantedBy=multi-user.target
