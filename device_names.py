@@ -24,6 +24,7 @@ Three independent pieces:
 import ipaddress
 import json
 import os
+import re
 import socket
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from datetime import datetime, timezone
@@ -32,6 +33,20 @@ from datetime import datetime, timezone
 # capped so a request can't bloat device_names.json (every load_names()
 # call reads the whole file) with an arbitrarily large string.
 MAX_NAME_LENGTH = 100
+
+# Standard colon- or hyphen-separated MAC notation, either separator but
+# not mixed, either case. Also caps the string's length (unlike name
+# above, this had no validation at all until now) - a fixed-format value
+# to key mac_names by, not free-form text.
+MAC_RE = re.compile(r"^[0-9a-fA-F]{2}([:-])(?:[0-9a-fA-F]{2}\1){4}[0-9a-fA-F]{2}$")
+
+# Bounds memory/disk even if an authenticated client adds names for many
+# distinct IPs or MACs - without a cap, either dict would otherwise grow
+# by one entry per never-before-seen key forever (same reasoning as
+# webapp.py's _LOGIN_ATTEMPT_MAX_TRACKED). Real home networks have
+# nowhere near this many devices.
+MAX_TRACKED_DEVICES = 5000
+MAX_TRACKED_MACS = 5000
 
 
 def _names_path():
@@ -109,23 +124,38 @@ def is_valid_ip(ip):
         return False
 
 
+def is_valid_mac(mac):
+    return bool(MAC_RE.match(mac or ""))
+
+
+def _evict_oldest_if_full(d, key, cap):
+    """Drop the oldest-tracked key before adding a new one past the cap
+    (same eviction approach as webapp.py's login-attempt tracking dict)."""
+    if key not in d and len(d) >= cap:
+        del d[next(iter(d))]
+
+
 def set_name(ip, name, mac=None):
     """Set (or, with a blank name, clear) the friendly name for an IP -
     and, if mac is given, tie that same name to the MAC too, so it's still
     found (via resolve_name()) after this IP is reassigned to something
-    else. Caller is responsible for validating the IP first; we assert it
-    here as a safety net.
+    else. Caller is responsible for validating the IP and MAC first; we
+    assert both here as a safety net.
 
     Returns the resulting ip -> name map, same as before mac_names existed.
     """
     if not is_valid_ip(ip):
         raise ValueError(f"Not a valid IP address: {ip}")
+    if mac and not is_valid_mac(mac):
+        raise ValueError(f"Not a valid MAC address: {mac}")
     names, mac_names = _load()
     name = (name or "").strip()[:MAX_NAME_LENGTH]
     mac_key = mac.lower() if mac else None
     if name:
+        _evict_oldest_if_full(names, ip, MAX_TRACKED_DEVICES)
         names[ip] = name
         if mac_key:
+            _evict_oldest_if_full(mac_names, mac_key, MAX_TRACKED_MACS)
             mac_names[mac_key] = name
     else:
         names.pop(ip, None)

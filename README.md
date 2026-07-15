@@ -350,17 +350,28 @@ vendored copy) - so the dashboard can't be embedded in another page's
 iframe for a UI-redress/clickjacking attempt. Request bodies are capped
 at 64KB (`MAX_CONTENT_LENGTH`) and a device name is capped at 100
 characters, so a single request can't bloat `device_names.json` with an
-arbitrarily large string. The login throttle escalates per-IP after each
-failed attempt (1s, 2s, 4s, ... capped at 30s) rather than holding to a
-flat rate forever, and resets on a successful login; its tracking dict
-is itself bounded (10,000 entries, oldest evicted first) so it can't
-grow without limit under a wide range of source IPs. Stored/reflected XSS and
-CSRF were both actively tested for (payloads planted in every
-attacker-influenceable field; real cross-site request attempts from a
-genuinely different host) and found not exploitable - the consistent
-`escapeHtml()` discipline in the frontend and the lack of any
-`Access-Control-Allow-Origin` header (so a browser refuses to complete a
-cross-site fetch with credentials) hold up under testing.
+arbitrarily large string; a device's MAC is similarly format-validated
+(rejecting anything that isn't standard MAC notation) rather than
+accepted as free-form text. Both the `names` and `mac_names` maps in
+`device_names.json`, and the allowlist/resolved-alert lists in
+`alert_state.json`, are themselves bounded (oldest evicted first) so an
+authenticated client can't grow any of them without limit by adding many
+distinct devices or rules. `POST .../alerts/<index>/resolve|unresolve`
+also validates that `<index>` is an actual alert in that run before
+recording anything - `alert_state.json`'s resolved list is loaded and
+parsed in full on nearly every dashboard request, so accepting an
+arbitrary index here would have been a real growth-driven performance
+regression, not just a cosmetic bug. The login throttle escalates
+per-IP after each failed attempt (1s, 2s, 4s, ... capped at 30s) rather
+than holding to a flat rate forever, and resets on a successful login;
+its tracking dict is itself bounded (10,000 entries, oldest evicted
+first) so it can't grow without limit under a wide range of source IPs.
+Stored/reflected XSS and CSRF were both actively tested for (payloads
+planted in every attacker-influenceable field; real cross-site request
+attempts from a genuinely different host) and found not exploitable -
+the consistent `escapeHtml()` discipline in the frontend and the lack
+of any `Access-Control-Allow-Origin` header (so a browser refuses to
+complete a cross-site fetch with credentials) hold up under testing.
 
 ### TLS / Reverse Proxy
 
