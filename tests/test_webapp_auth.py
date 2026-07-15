@@ -125,6 +125,32 @@ def test_security_headers_present_on_api_response(client):
     assert "Content-Security-Policy" in resp.headers
 
 
+def test_cross_origin_policies_present_unconditionally(client):
+    """Neither policy depends on whether this sits behind TLS - both are
+    same-origin-only defaults a single-origin dashboard has no
+    legitimate reason to relax, unlike Secure/HSTS which genuinely need
+    HTTPS in place first."""
+    resp = client.get("/login")
+    assert resp.headers["Cross-Origin-Opener-Policy"] == "same-origin"
+    assert resp.headers["Cross-Origin-Resource-Policy"] == "same-origin"
+
+
+def test_hsts_absent_by_default(client):
+    """Sending HSTS on a plain-HTTP-only deployment would have browsers
+    refuse to connect over HTTP at all on the next visit - only safe
+    once a TLS-terminating proxy is confirmed to be in front."""
+    resp = client.get("/login")
+    assert "Strict-Transport-Security" not in resp.headers
+
+
+def test_hsts_present_when_behind_tls_proxy(tmp_path, monkeypatch):
+    webapp_module = _fresh_webapp(monkeypatch, tmp_path, behind_tls_proxy=True)
+    webapp_module.app.config["TESTING"] = True
+    with webapp_module.app.test_client() as c:
+        resp = c.get("/login")
+    assert resp.headers["Strict-Transport-Security"] == "max-age=31536000"
+
+
 def test_csp_skipped_for_per_run_html_report(webapp_module, client, tmp_path):
     """The per-run report loads Chart.js from a CDN (with an SRI hash) -
     a blanket script-src 'self' CSP here would silently break its chart."""

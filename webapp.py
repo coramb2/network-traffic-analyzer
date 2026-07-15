@@ -160,6 +160,26 @@ def _security_headers(response):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
 
+    # Neither this dashboard nor anything it serves has a legitimate
+    # reason to be opened as a popup from another origin, or to have its
+    # responses embedded/read cross-origin - both are purely defensive
+    # (window-reference tricks, Spectre-class cross-origin side-channel
+    # reads) since a single-origin dashboard has nothing to gain from
+    # allowing either.
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+
+    # Only sent once a TLS-terminating proxy is confirmed to be in front
+    # (see BEHIND_TLS_PROXY above) - sending it on a plain-HTTP-only
+    # deployment would have browsers refuse to connect over HTTP at all
+    # on the next visit, with no way back short of clearing HSTS state.
+    # Once it is safe to send, this closes a real gap the proxy alone
+    # doesn't: without it, a network attacker can silently downgrade a
+    # later visit back to plain HTTP (SSL stripping) since the browser
+    # has no standing instruction to always use HTTPS for this origin.
+    if BEHIND_TLS_PROXY:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+
     # Skipped for the per-run HTML report: it loads Chart.js from a CDN
     # (with an SRI hash pin) rather than this app's own vendored copy, and
     # is meant to keep working if downloaded and opened standalone outside

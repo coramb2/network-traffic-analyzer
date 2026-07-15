@@ -413,11 +413,22 @@ Either way, once the proxy is genuinely in place, set
 `DASHBOARD_BEHIND_TLS_PROXY=true` (`.env` for Docker, `dashboard.env` for
 systemd - see below). This tells the app to trust the proxy's
 `X-Forwarded-For`/`X-Forwarded-Proto` headers for exactly one hop (via
-Werkzeug's `ProxyFix`) and marks the session cookie `Secure`. Leave it
-`false` for a bare-HTTP setup: without a real proxy in front, trusting
-those headers would let any client just claim whatever source IP it
-likes, defeating the per-IP login throttle above, and a `Secure` cookie
-would never actually get set over plain HTTP in the first place.
+Werkzeug's `ProxyFix`), marks the session cookie `Secure`, and sends
+`Strict-Transport-Security` so a network attacker can't silently
+downgrade a later visit back to plain HTTP (SSL stripping) once the
+browser has seen it once. Leave it `false` for a bare-HTTP setup:
+without a real proxy in front, trusting those headers would let any
+client just claim whatever source IP it likes, defeating the per-IP
+login throttle above; a `Secure` cookie would never actually get set
+over plain HTTP in the first place; and sending HSTS with no HTTPS
+behind it would have the browser refuse to connect over HTTP at all on
+the next visit, with no way back short of clearing HSTS state.
+
+Every response also carries `Cross-Origin-Opener-Policy: same-origin`
+and `Cross-Origin-Resource-Policy: same-origin` unconditionally (not
+tied to `DASHBOARD_BEHIND_TLS_PROXY`) - defense against cross-origin
+window-reference tricks and Spectre-class side-channel reads, neither
+of which a single-origin dashboard has any legitimate reason to allow.
 
 The **Traffic Trend** panel charts packets/sec and open-alert count across
 recent runs (oldest to newest) so you can see whether current traffic or
