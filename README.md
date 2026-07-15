@@ -432,9 +432,18 @@ To save you naming everything by hand, each capture run does best-effort
 suggestions — click a suggestion to accept it as the name, or type your
 own. Lookups are time-bounded so they can't stall a run, and can be turned
 off entirely with `RESOLVE_HOSTNAMES=false` (or `--no-hostnames` on the
-CLI) if you'd rather no PTR queries leave the host. Names are keyed by IP
-for now, stored in `data/device_names.json` in the same read-write state
-volume as the alert rules.
+CLI) if you'd rather no PTR queries leave the host. Names are stored in
+`data/device_names.json` in the same read-write state volume as the
+alert rules.
+
+**A name survives a DHCP lease change** when a MAC address was recorded
+for that device (see "source MAC address and manufacturer" below): saving
+a name while a MAC is known ties it to that MAC as well as the IP it was
+set on, and the Devices/Traffic Trend panels prefer the MAC-keyed name
+whenever one exists - so the device keeps its name even after its IP
+changes, as long as it's seen again with the same MAC. A device we've
+never recorded an Ethernet source MAC for (see `analyzer.py`) has nothing
+more stable to key on, so its name stays IP-only.
 
 For public IPs, the Devices panel can also show a country and
 organization ("🌍 US · DigitalOcean") - useful context for deciding

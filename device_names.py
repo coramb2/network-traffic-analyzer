@@ -3,10 +3,19 @@
 Device identity: friendly names for IPs, plus best-effort reverse-DNS
 resolution used to *suggest* names.
 
-Two independent pieces:
+Three independent pieces:
 - Manual names (load_names/set_name/remove_name) live in a small JSON file
   in the shared state volume, written only by the dashboard. This is the
   source of truth for what a device is called.
+- A name can optionally be tied to a MAC address too (set_name(..., mac=)),
+  stored alongside the IP-keyed entry rather than instead of it - existing
+  callers that only ever deal in IPs (load_names(), the dashboard's own
+  GET /api/devices) keep working unchanged. resolve_name() is the one that
+  knows to prefer the MAC-keyed name when a MAC is available, which is how
+  a name survives a DHCP lease change: the MAC stays the same even when
+  the IP doesn't. Devices we've never seen an Ethernet source MAC for
+  (see analyzer.py) still only ever get an IP-keyed name - there's nothing
+  more stable to key on for those.
 - resolve_hostnames() does reverse-DNS (PTR) lookups for a set of IPs.
   The capture container runs this after a run and stores the result in
   that run's report as auto-suggestions; it never writes the names file.
@@ -29,23 +38,63 @@ def _names_path():
     return os.environ.get("DEVICE_NAMES_PATH", "device_names.json")
 
 
-def load_names():
-    """Return the ip -> name mapping, or {} if the file is missing/corrupt."""
+def _load():
     try:
         with open(_names_path()) as f:
             data = json.load(f)
     except (OSError, json.JSONDecodeError):
-        return {}
+        return {}, {}
     names = data.get("names", {})
-    return names if isinstance(names, dict) else {}
+    mac_names = data.get("mac_names", {})
+    return (
+        names if isinstance(names, dict) else {},
+        mac_names if isinstance(mac_names, dict) else {},
+    )
 
 
-def _save_names(names):
+def load_names():
+    """Return the ip -> name mapping, or {} if the file is missing/corrupt.
+
+    Unchanged in shape regardless of whether any entry also has a MAC tied
+    to it - existing callers that only ever deal in IPs don't need to
+    change. Use resolve_name() instead of this when a MAC is available and
+    you want a name to survive that device's IP changing.
+    """
+    names, _ = _load()
+    return names
+
+
+def load_mac_names():
+    """Return the mac (lowercased) -> name mapping, or {} if none are set."""
+    _, mac_names = _load()
+    return mac_names
+
+
+def resolve_name(ip, mac=None, names=None, mac_names=None):
+    """The name to show for a device, preferring its MAC-keyed name (which
+    survives an IP change) over its IP-keyed one.
+
+    names/mac_names can be passed in when the caller already loaded them
+    (e.g. once per request instead of once per device) - loaded fresh
+    otherwise.
+    """
+    if names is None or mac_names is None:
+        names, mac_names = _load()
+    if mac and mac.lower() in mac_names:
+        return mac_names[mac.lower()]
+    return names.get(ip)
+
+
+def _save(names, mac_names):
     """Write via temp file + rename so a concurrent reader never sees a
     half-written file (same approach as the alert-state store)."""
     path = _names_path()
     tmp_path = f"{path}.tmp"
-    payload = {"updated_at": datetime.now(timezone.utc).isoformat(), "names": names}
+    payload = {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "names": names,
+        "mac_names": mac_names,
+    }
     with open(tmp_path, "w") as f:
         json.dump(payload, f, indent=2)
     os.chmod(tmp_path, 0o640)
@@ -60,29 +109,39 @@ def is_valid_ip(ip):
         return False
 
 
-def set_name(ip, name):
-    """Set (or, with a blank name, clear) the friendly name for an IP.
+def set_name(ip, name, mac=None):
+    """Set (or, with a blank name, clear) the friendly name for an IP -
+    and, if mac is given, tie that same name to the MAC too, so it's still
+    found (via resolve_name()) after this IP is reassigned to something
+    else. Caller is responsible for validating the IP first; we assert it
+    here as a safety net.
 
-    Returns the resulting names map. Caller is responsible for validating
-    the IP first; we assert it here as a safety net.
+    Returns the resulting ip -> name map, same as before mac_names existed.
     """
     if not is_valid_ip(ip):
         raise ValueError(f"Not a valid IP address: {ip}")
-    names = load_names()
+    names, mac_names = _load()
     name = (name or "").strip()[:MAX_NAME_LENGTH]
+    mac_key = mac.lower() if mac else None
     if name:
         names[ip] = name
+        if mac_key:
+            mac_names[mac_key] = name
     else:
         names.pop(ip, None)
-    _save_names(names)
+        if mac_key:
+            mac_names.pop(mac_key, None)
+    _save(names, mac_names)
     return names
 
 
-def remove_name(ip):
-    names = load_names()
+def remove_name(ip, mac=None):
+    names, mac_names = _load()
     existed = ip in names
     names.pop(ip, None)
-    _save_names(names)
+    if mac:
+        mac_names.pop(mac.lower(), None)
+    _save(names, mac_names)
     return existed
 
 

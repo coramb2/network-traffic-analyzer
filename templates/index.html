@@ -927,8 +927,10 @@ function deviceRowHtml(dev) {
             <td><input class="device-name-input" type="text" value="${escapeHtml(dev.name || '')}"
                        placeholder="Unnamed" data-ip="${dev.ip}"></td>
             <td class="alert-actions">
-                <button class="btn" data-action="save-device" data-ip="${dev.ip}">Save</button>
-                ${dev.name ? `<button class="btn danger" data-action="remove-device" data-ip="${dev.ip}">Remove</button>` : ''}
+                <button class="btn" data-action="save-device" data-ip="${dev.ip}"
+                    data-mac="${escapeHtml((dev.mac_info && dev.mac_info.mac) || '')}">Save</button>
+                ${dev.name ? `<button class="btn danger" data-action="remove-device" data-ip="${dev.ip}"
+                    data-mac="${escapeHtml((dev.mac_info && dev.mac_info.mac) || '')}">Remove</button>` : ''}
             </td>
         </tr>
     `;
@@ -948,11 +950,13 @@ async function loadDevices() {
     empty.style.display = devices.length ? 'none' : 'block';
 }
 
-async function saveDevice(ip, name) {
+async function saveDevice(ip, name, mac) {
+    // Tying the name to the MAC too (when known) is what lets it survive
+    // this IP later being reassigned to a different device via DHCP.
     await fetch('/api/devices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ip, name }),
+        body: JSON.stringify({ ip, name, mac: mac || null }),
     });
     await loadDevices();
     if (currentRunId) await showRunDetail(currentRunId);
@@ -1059,9 +1063,9 @@ document.addEventListener('click', async (e) => {
         if (currentRunId) await showRunDetail(currentRunId);
     } else if (action === 'save-device') {
         const input = document.querySelector(`.device-name-input[data-ip="${btn.dataset.ip}"]`);
-        await saveDevice(btn.dataset.ip, input ? input.value : '');
+        await saveDevice(btn.dataset.ip, input ? input.value : '', btn.dataset.mac);
     } else if (action === 'remove-device') {
-        await saveDevice(btn.dataset.ip, '');
+        await saveDevice(btn.dataset.ip, '', btn.dataset.mac);
     } else if (action === 'use-suggestion') {
         const input = document.querySelector(`.device-name-input[data-ip="${btn.dataset.ip}"]`);
         if (input) input.value = btn.dataset.name;

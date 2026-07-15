@@ -245,3 +245,54 @@ def test_device_trend_ignores_runs_with_missing_analysis_file(app_ctx, client):
     body = resp.get_json()
     assert len(body["runs"]) == 1
     assert body["devices"][0]["packet_counts"] == [10]
+
+
+# --- MAC-keyed naming survives a DHCP-style IP change -----------------------
+
+def test_post_device_with_mac_stores_mac_keyed_name(client):
+    resp = client.post("/api/devices", json={
+        "ip": "192.168.1.50", "name": "Cora's Laptop", "mac": "aa:bb:cc:dd:ee:ff",
+    })
+    assert resp.status_code == 200
+
+    import device_names
+    assert device_names.load_mac_names()["aa:bb:cc:dd:ee:ff"] == "Cora's Laptop"
+
+
+def test_seen_devices_name_survives_ip_change_via_mac(app_ctx, client):
+    """The actual DHCP-survival scenario end-to-end: a device is named
+    while at one IP, then reappears (with the same MAC) at a different IP
+    in a later run - the name should still show up there."""
+    _, reports_root = app_ctx
+    old_mac = {"mac": "aa:bb:cc:dd:ee:ff", "vendor": "Acme Corp"}
+    make_run_with_ips(reports_root, "20260101T000000Z", {"192.168.1.50": 10}, mac_info={"192.168.1.50": old_mac})
+    client.post("/api/devices", json={"ip": "192.168.1.50", "name": "Cora's Laptop", "mac": "aa:bb:cc:dd:ee:ff"})
+
+    # Same device, new IP from a lease renewal - nobody re-named it.
+    new_mac = {"mac": "aa:bb:cc:dd:ee:ff", "vendor": "Acme Corp"}
+    make_run_with_ips(reports_root, "20260102T000000Z", {"192.168.1.77": 15}, mac_info={"192.168.1.77": new_mac})
+
+    resp = client.get("/api/seen-devices")
+    devices = {d["ip"]: d for d in resp.get_json()}
+    assert devices["192.168.1.77"]["name"] == "Cora's Laptop"
+
+
+def test_device_trend_label_survives_ip_change_via_mac(app_ctx, client):
+    _, reports_root = app_ctx
+    mac_info = {"mac": "aa:bb:cc:dd:ee:ff", "vendor": "Acme Corp"}
+    make_run_with_ips(reports_root, "20260101T000000Z", {"192.168.1.50": 10}, mac_info={"192.168.1.50": mac_info})
+    client.post("/api/devices", json={"ip": "192.168.1.50", "name": "Cora's Laptop", "mac": "aa:bb:cc:dd:ee:ff"})
+    make_run_with_ips(reports_root, "20260102T000000Z", {"192.168.1.77": 15}, mac_info={"192.168.1.77": mac_info})
+
+    resp = client.get("/api/device-trend")
+    devices = {d["ip"]: d for d in resp.get_json()["devices"]}
+    assert devices["192.168.1.77"]["label"] == "Cora's Laptop"
+
+
+def test_delete_device_with_mac_query_param_clears_mac_name(client):
+    client.post("/api/devices", json={"ip": "192.168.1.50", "name": "Thing", "mac": "aa:bb:cc:dd:ee:ff"})
+    resp = client.delete("/api/devices/192.168.1.50?mac=aa:bb:cc:dd:ee:ff")
+    assert resp.status_code == 204
+
+    import device_names
+    assert device_names.load_mac_names() == {}

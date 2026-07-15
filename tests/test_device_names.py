@@ -77,6 +77,84 @@ def test_set_name_truncates_oversized_input():
     assert stored == huge_name[:device_names.MAX_NAME_LENGTH]
 
 
+# --- MAC-keyed naming (resolve_name) -------------------------------------
+
+def test_set_name_with_mac_populates_both_maps():
+    device_names.set_name("192.168.1.50", "Cora's Laptop", mac="AA:BB:CC:DD:EE:FF")
+    assert device_names.load_names()["192.168.1.50"] == "Cora's Laptop"
+    assert device_names.load_mac_names()["aa:bb:cc:dd:ee:ff"] == "Cora's Laptop"
+
+
+def test_set_name_without_mac_leaves_mac_names_empty():
+    device_names.set_name("192.168.1.50", "Cora's Laptop")
+    assert device_names.load_mac_names() == {}
+
+
+def test_resolve_name_prefers_mac_over_ip():
+    """The whole point: once a name is tied to a MAC, it's found under
+    that MAC even for a request naming a *different* IP - which is
+    exactly what happens after a DHCP lease reassigns this IP."""
+    device_names.set_name("192.168.1.50", "Cora's Laptop", mac="aa:bb:cc:dd:ee:ff")
+    name = device_names.resolve_name("192.168.1.99", mac="aa:bb:cc:dd:ee:ff")
+    assert name == "Cora's Laptop"
+
+
+def test_resolve_name_survives_dhcp_style_ip_change():
+    device_names.set_name("192.168.1.50", "Cora's Laptop", mac="aa:bb:cc:dd:ee:ff")
+    # Device got a new IP from a lease renewal; nobody re-named it.
+    new_ip = "192.168.1.77"
+    name = device_names.resolve_name(new_ip, mac="aa:bb:cc:dd:ee:ff")
+    assert name == "Cora's Laptop"
+
+
+def test_resolve_name_falls_back_to_ip_when_no_mac_known():
+    device_names.set_name("192.168.1.50", "Printer")
+    assert device_names.resolve_name("192.168.1.50", mac=None) == "Printer"
+    assert device_names.resolve_name("192.168.1.50", mac="aa:bb:cc:dd:ee:ff") == "Printer"
+
+
+def test_resolve_name_returns_none_when_unnamed():
+    assert device_names.resolve_name("192.168.1.50", mac="aa:bb:cc:dd:ee:ff") is None
+
+
+def test_resolve_name_mac_lookup_is_case_insensitive():
+    device_names.set_name("192.168.1.50", "Cora's Laptop", mac="AA:BB:CC:DD:EE:FF")
+    assert device_names.resolve_name("192.168.1.99", mac="aa:bb:cc:dd:ee:ff") == "Cora's Laptop"
+
+
+def test_blank_name_with_mac_clears_both_entries():
+    device_names.set_name("192.168.1.50", "Cora's Laptop", mac="aa:bb:cc:dd:ee:ff")
+    device_names.set_name("192.168.1.50", "", mac="aa:bb:cc:dd:ee:ff")
+    assert device_names.load_names() == {}
+    assert device_names.load_mac_names() == {}
+
+
+def test_remove_name_with_mac_clears_both_entries():
+    device_names.set_name("192.168.1.50", "Cora's Laptop", mac="aa:bb:cc:dd:ee:ff")
+    device_names.remove_name("192.168.1.50", mac="aa:bb:cc:dd:ee:ff")
+    assert device_names.load_names() == {}
+    assert device_names.load_mac_names() == {}
+
+
+def test_remove_name_without_mac_leaves_mac_names_entry_intact():
+    """Removing by IP alone (no mac passed) can't know to clean up a
+    mac-keyed entry set earlier - a known, accepted gap given the caller
+    is responsible for passing mac when it has one."""
+    device_names.set_name("192.168.1.50", "Cora's Laptop", mac="aa:bb:cc:dd:ee:ff")
+    device_names.remove_name("192.168.1.50")
+    assert device_names.load_names() == {}
+    assert device_names.load_mac_names() == {"aa:bb:cc:dd:ee:ff": "Cora's Laptop"}
+
+
+def test_load_mac_names_defaults_to_empty_dict_when_missing():
+    assert device_names.load_mac_names() == {}
+
+
+def test_load_mac_names_defaults_to_empty_dict_when_corrupt(names_file):
+    names_file.write_text("not json")
+    assert device_names.load_mac_names() == {}
+
+
 def test_resolve_hostnames_empty_input_returns_empty_dict():
     assert device_names.resolve_hostnames([]) == {}
 
