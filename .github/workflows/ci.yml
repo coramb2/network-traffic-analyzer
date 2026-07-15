@@ -33,5 +33,11 @@ jobs:
       - name: Compile check
         run: python -m compileall -q .
 
+      # Correctness-focused rule set only (see pyproject.toml) - unused
+      # imports/variables, undefined names, ambiguous variable names.
+      # Deliberately not full style enforcement.
+      - name: Lint
+        run: ruff check .
+
       - name: Run tests
         run: pytest -v

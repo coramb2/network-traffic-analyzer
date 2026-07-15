@@ -175,9 +175,12 @@ runs. No network access, root, or a running capture is required for any
 of it.
 
 **CI** (`.github/workflows/ci.yml`) runs the same install + compile-check +
-`pytest` on every push to `main` and every pull request targeting it, on
-`ubuntu-latest` with Python 3.11 - the badge at the top of this README
-reflects the latest run.
+lint + `pytest` on every push to `main` and every pull request targeting
+it, on `ubuntu-latest` with Python 3.11 - the badge at the top of this
+README reflects the latest run. Lint is `ruff` (`pyproject.toml`) with a
+deliberately narrow, correctness-focused rule set - unused imports/
+variables, undefined names, ambiguous variable names - not full style
+enforcement.
 
 ## 🛠️ Technical Stack
 

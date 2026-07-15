@@ -7,7 +7,6 @@ Integrates packet capture, anomaly detection, and reporting
 import argparse
 import os
 import sys
-import json
 from datetime import datetime
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -131,11 +130,11 @@ Examples:
                 task = progress.add_task("Analyzing packets...", total=len(analyzer.packets))
                 
                 for packet in analyzer.packets:
-                    alerts = detector.analyze_packet(packet)
+                    detector.analyze_packet(packet)
                     progress.update(task, advance=1)
-                
+
                 # Run pattern analysis
-                pattern_alerts = detector.analyze_traffic_patterns(analyzer.packets)
+                detector.analyze_traffic_patterns(analyzer.packets)
 
                 # New/unknown device detection - whole-run check against
                 # every device ever seen, not just this run's packets, so
@@ -275,7 +274,7 @@ Examples:
                         console.print(f"[yellow]Warning: alert notification via {channel} failed[/yellow]")
 
         if args.pcap:
-            console.print(f"[green]✓[/green] Raw packets saved to traffic_capture.pcap")
+            console.print("[green]✓[/green] Raw packets saved to traffic_capture.pcap")
         
         # Print summary if requested
         if args.summary:
@@ -285,16 +284,16 @@ Examples:
         
         # Final summary
         console.print("\n[bold green]Analysis Complete![/bold green]")
-        console.print(f"\nFiles generated:")
+        console.print("\nFiles generated:")
         console.print(f"  • {args.output} (JSON analysis)")
         if args.csv:
-            console.print(f"  • traffic_data.csv (packet data)")
+            console.print("  • traffic_data.csv (packet data)")
         if args.html:
-            console.print(f"  • traffic_report.html (visual report)")
+            console.print("  • traffic_report.html (visual report)")
         if detector and detector.alerts:
-            console.print(f"  • security_alerts.json (security alerts)")
+            console.print("  • security_alerts.json (security alerts)")
         if args.pcap:
-            console.print(f"  • traffic_capture.pcap (raw packets)")
+            console.print("  • traffic_capture.pcap (raw packets)")
 
         console.print("\n[cyan]Tip: Use --html flag to generate a visual report[/cyan]")
         console.print("[cyan]     Use --summary flag to print analysis to console[/cyan]\n")

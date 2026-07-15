@@ -1,3 +1,4 @@
-# Test dependencies. Install alongside both runtime requirement files:
+# Test/lint dependencies. Install alongside both runtime requirement files:
 #   pip install -r requirements.txt -r requirements-dashboard.txt -r requirements-dev.txt
 pytest==9.0.3
+ruff==0.15.21

@@ -85,21 +85,21 @@ class TrafficReporter:
                 alerts = self.detector_data.get('alerts', [])
                 severity_count = Counter(a['severity'] for a in alerts)
                 
-                report_lines.append(f"\nBy Severity:")
+                report_lines.append("\nBy Severity:")
                 for severity in ['HIGH', 'MEDIUM', 'LOW']:
                     count = severity_count.get(severity, 0)
                     if count > 0:
                         report_lines.append(f"  {severity:10} {count:5} alerts")
                 
                 alert_types = Counter(a['type'] for a in alerts)
-                report_lines.append(f"\nBy Type:")
+                report_lines.append("\nBy Type:")
                 for alert_type, count in alert_types.most_common():
                     report_lines.append(f"  {alert_type:30} {count:5} alerts")
                 
                 # Recent alerts
                 recent = alerts[-5:]
                 if recent:
-                    report_lines.append(f"\nRecent Alerts (last 5):")
+                    report_lines.append("\nRecent Alerts (last 5):")
                     for alert in recent:
                         report_lines.append(f"  [{alert['severity']}] {alert['description']}")
         

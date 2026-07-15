@@ -37,9 +37,8 @@ def test_no_alerts_for_ordinary_traffic():
 
 def test_port_scan_detected_above_threshold():
     detector = AnomalyDetector()
-    alerts = []
     for port in range(1, 25):  # threshold is 20 distinct ports
-        alerts = detector.analyze_packet(make_packet(src_ip="9.9.9.9", dst_port=port))
+        detector.analyze_packet(make_packet(src_ip="9.9.9.9", dst_port=port))
 
     types = [a["type"] for a in detector.alerts]
     assert "PORT_SCAN" in types
