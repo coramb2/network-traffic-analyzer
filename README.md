@@ -2,6 +2,7 @@
 
 A real-time network packet capture and analysis tool with anomaly detection capabilities. Built for cybersecurity professionals, network engineers, and security researchers.
 
+![CI](https://github.com/coramb2/network-traffic-analyzer/actions/workflows/ci.yml/badge.svg)
 ![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -172,6 +173,11 @@ isolates its own state directory (`ALERT_STATE_PATH`/`DEVICE_NAMES_PATH`/
 `REPORTS_ROOT`) via `tmp_path`, so tests don't share or leak state between
 runs. No network access, root, or a running capture is required for any
 of it.
+
+**CI** (`.github/workflows/ci.yml`) runs the same install + compile-check +
+`pytest` on every push to `main` and every pull request targeting it, on
+`ubuntu-latest` with Python 3.11 - the badge at the top of this README
+reflects the latest run.
 
 ## 🛠️ Technical Stack
 

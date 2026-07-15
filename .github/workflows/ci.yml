@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # tcpdump: scapy shells out to it to compile BPF filter strings on
+      # Linux (see Dockerfile) - the test suite itself only ever builds
+      # synthetic in-memory packets, never a live capture, but installing
+      # it removes any doubt rather than relying on that.
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y tcpdump
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt -r requirements-dashboard.txt -r requirements-dev.txt
+
+      # Cheap syntax/import sanity check, distinct from test failures -
+      # catches a broken module even if nothing happens to import it in
+      # the test suite.
+      - name: Compile check
+        run: python -m compileall -q .
+
+      - name: Run tests
+        run: pytest -v
