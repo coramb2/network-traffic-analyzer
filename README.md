@@ -174,6 +174,14 @@ isolates its own state directory (`ALERT_STATE_PATH`/`DEVICE_NAMES_PATH`/
 runs. No network access, root, or a running capture is required for any
 of it.
 
+`tests/test_dashboard_browser.py` is different: it launches a real
+browser (Playwright) against a live instance of the dashboard and drives
+`templates/index.html`'s actual JS - Chart.js rendering, the escaping
+discipline, the device-trend chart's color-stability guarantee - rather
+than going through Flask's in-process test client like everything else.
+Needs a browser installed once (`playwright install chromium`); every
+other test file needs nothing beyond `requirements-dev.txt`.
+
 **CI** (`.github/workflows/ci.yml`) runs the same install + compile-check +
 lint + `pytest` on every push to `main` and every pull request targeting
 it, on `ubuntu-latest` with Python 3.11 - the badge at the top of this
