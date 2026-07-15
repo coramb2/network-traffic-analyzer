@@ -81,22 +81,33 @@ app.config.update(
     MAX_CONTENT_LENGTH=64 * 1024,
 )
 
-# Minimal brute-force throttle: at most one login attempt per second per
-# client IP. Not a substitute for a real rate limiter, but cheap and stops
-# naive automated guessing without adding a dependency.
-_LOGIN_THROTTLE_SECONDS = 1
+# Brute-force throttle: an escalating per-IP wait that doubles with each
+# consecutive failed attempt (1s, 2s, 4s, ... capped) and resets on a
+# successful login. A flat per-second ceiling caps naive guessing at a
+# fixed rate forever; escalating backoff instead makes a sustained
+# attempt increasingly expensive. Not a substitute for a real rate
+# limiter, but cheap and adds no dependency.
+_LOGIN_BACKOFF_BASE_SECONDS = 1
+_LOGIN_BACKOFF_MAX_SECONDS = 30
 # Bounds memory even if an attacker cycles through many distinct source
 # IPs (e.g. a wide IPv6 range) - without a cap this dict would otherwise
 # grow by one entry per never-before-seen IP forever.
 _LOGIN_ATTEMPT_MAX_TRACKED = 10000
-_last_login_attempt = {}
+_login_attempts = {}  # client_ip -> {"failures": int, "last_attempt": monotonic seconds}
 
 
 def _evict_oldest_login_attempt_if_full(client_ip):
     """Drop the oldest-tracked client IP before adding a new one past the
     cap (same eviction approach as detector.py's per-IP tracking dicts)."""
-    if client_ip not in _last_login_attempt and len(_last_login_attempt) >= _LOGIN_ATTEMPT_MAX_TRACKED:
-        del _last_login_attempt[next(iter(_last_login_attempt))]
+    if client_ip not in _login_attempts and len(_login_attempts) >= _LOGIN_ATTEMPT_MAX_TRACKED:
+        del _login_attempts[next(iter(_login_attempts))]
+
+
+def _login_backoff_seconds(failures):
+    """Wait required before the next attempt, given this many consecutive
+    failures so far - doubles each time, capped so a long streak doesn't
+    produce an absurd wait."""
+    return min(_LOGIN_BACKOFF_BASE_SECONDS * (2 ** failures), _LOGIN_BACKOFF_MAX_SECONDS)
 
 
 def _safe_next_path(path):
@@ -152,17 +163,22 @@ def login():
     error = None
     if request.method == "POST":
         client_ip = request.remote_addr or "unknown"
-        wait = _LOGIN_THROTTLE_SECONDS - (time.monotonic() - _last_login_attempt.get(client_ip, 0))
-        if wait > 0:
-            time.sleep(wait)
+        entry = _login_attempts.get(client_ip)
+        if entry:
+            wait = _login_backoff_seconds(entry["failures"]) - (time.monotonic() - entry["last_attempt"])
+            if wait > 0:
+                time.sleep(wait)
         _evict_oldest_login_attempt_if_full(client_ip)
-        _last_login_attempt[client_ip] = time.monotonic()
+        entry = _login_attempts.setdefault(client_ip, {"failures": 0, "last_attempt": 0.0})
+        entry["last_attempt"] = time.monotonic()
 
         if hmac.compare_digest(request.form.get("password", ""), DASHBOARD_PASSWORD):
+            _login_attempts.pop(client_ip, None)
             session.clear()
             session["authenticated"] = True
             session.permanent = True
             return redirect(_safe_next_path(request.form.get("next")) or url_for("index"))
+        entry["failures"] += 1
         error = "Incorrect password."
 
     return render_template("login.html", error=error, next=_safe_next_path(request.args.get("next")) or "")
