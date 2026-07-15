@@ -1,4 +1,5 @@
 import socket
+import threading
 
 import pytest
 
@@ -215,6 +216,25 @@ def test_load_mac_names_defaults_to_empty_dict_when_missing():
 def test_load_mac_names_defaults_to_empty_dict_when_corrupt(names_file):
     names_file.write_text("not json")
     assert device_names.load_mac_names() == {}
+
+
+# --- concurrent writes don't lose updates ---------------------------------
+
+def test_concurrent_set_name_calls_do_not_lose_updates():
+    """Without a lock around the _load()-modify-_save() cycle, concurrent
+    writers race: both load the same pre-change state, and whichever
+    saves last silently wins, discarding the other's device name."""
+    n = 100
+    threads = [
+        threading.Thread(target=device_names.set_name, args=(f"10.0.{i // 256}.{i % 256}", f"device-{i}"))
+        for i in range(n)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(device_names.load_names()) == n
 
 
 def test_resolve_hostnames_empty_input_returns_empty_dict():

@@ -21,6 +21,8 @@ Three independent pieces:
   that run's report as auto-suggestions; it never writes the names file.
 """
 
+import contextlib
+import fcntl
 import ipaddress
 import json
 import os
@@ -116,6 +118,25 @@ def _save(names, mac_names):
     os.replace(tmp_path, path)
 
 
+@contextlib.contextmanager
+def _locked():
+    """Serializes a _load()-modify-_save() cycle across threads and
+    processes via an OS-level advisory lock on a dedicated lock file -
+    see alert_rules._locked() for why this is a separate file from the
+    names file itself (an flock() held on the live path would be
+    silently invalidated by _save()'s atomic rename after the first
+    write) and why this matters despite the documented single-threaded
+    default deployment not currently triggering it.
+    """
+    fd = os.open(f"{_names_path()}.lock", os.O_CREAT | os.O_RDWR, 0o640)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
 def is_valid_ip(ip):
     try:
         ipaddress.ip_address(ip)
@@ -148,30 +169,32 @@ def set_name(ip, name, mac=None):
         raise ValueError(f"Not a valid IP address: {ip}")
     if mac and not is_valid_mac(mac):
         raise ValueError(f"Not a valid MAC address: {mac}")
-    names, mac_names = _load()
-    name = (name or "").strip()[:MAX_NAME_LENGTH]
-    mac_key = mac.lower() if mac else None
-    if name:
-        _evict_oldest_if_full(names, ip, MAX_TRACKED_DEVICES)
-        names[ip] = name
-        if mac_key:
-            _evict_oldest_if_full(mac_names, mac_key, MAX_TRACKED_MACS)
-            mac_names[mac_key] = name
-    else:
-        names.pop(ip, None)
-        if mac_key:
-            mac_names.pop(mac_key, None)
-    _save(names, mac_names)
+    with _locked():
+        names, mac_names = _load()
+        name = (name or "").strip()[:MAX_NAME_LENGTH]
+        mac_key = mac.lower() if mac else None
+        if name:
+            _evict_oldest_if_full(names, ip, MAX_TRACKED_DEVICES)
+            names[ip] = name
+            if mac_key:
+                _evict_oldest_if_full(mac_names, mac_key, MAX_TRACKED_MACS)
+                mac_names[mac_key] = name
+        else:
+            names.pop(ip, None)
+            if mac_key:
+                mac_names.pop(mac_key, None)
+        _save(names, mac_names)
     return names
 
 
 def remove_name(ip, mac=None):
-    names, mac_names = _load()
-    existed = ip in names
-    names.pop(ip, None)
-    if mac:
-        mac_names.pop(mac.lower(), None)
-    _save(names, mac_names)
+    with _locked():
+        names, mac_names = _load()
+        existed = ip in names
+        names.pop(ip, None)
+        if mac:
+            mac_names.pop(mac.lower(), None)
+        _save(names, mac_names)
     return existed
 
 
