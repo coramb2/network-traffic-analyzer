@@ -11,7 +11,7 @@ import json
 import pytest
 
 
-def _fresh_webapp(monkeypatch, tmp_path, password="s3cret", secret_key="test-key"):
+def _fresh_webapp(monkeypatch, tmp_path, password="s3cret", secret_key="test-key", behind_tls_proxy=False):
     monkeypatch.setenv("ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     monkeypatch.setenv("DEVICE_NAMES_PATH", str(tmp_path / "device_names.json"))
     monkeypatch.setenv("REPORTS_ROOT", str(tmp_path / "reports"))
@@ -24,6 +24,10 @@ def _fresh_webapp(monkeypatch, tmp_path, password="s3cret", secret_key="test-key
         monkeypatch.delenv("DASHBOARD_SECRET_KEY", raising=False)
     else:
         monkeypatch.setenv("DASHBOARD_SECRET_KEY", secret_key)
+    if behind_tls_proxy:
+        monkeypatch.setenv("DASHBOARD_BEHIND_TLS_PROXY", "true")
+    else:
+        monkeypatch.delenv("DASHBOARD_BEHIND_TLS_PROXY", raising=False)
 
     import webapp
     importlib.reload(webapp)
@@ -201,3 +205,46 @@ def test_login_sleeps_for_escalated_backoff_after_a_failure(client, webapp_modul
 
     assert slept
     assert slept[0] == pytest.approx(2, abs=0.5)
+
+
+# --- reverse-proxy / TLS support -----------------------------------------
+
+def test_session_cookie_not_secure_by_default(webapp_module):
+    """Without a confirmed TLS-terminating proxy in front, marking the
+    cookie Secure would break plain-HTTP setups entirely (browsers drop
+    a Secure cookie set over a non-HTTPS connection)."""
+    assert webapp_module.app.config["SESSION_COOKIE_SECURE"] is False
+
+
+def test_session_cookie_secure_when_behind_tls_proxy(tmp_path, monkeypatch):
+    webapp_module = _fresh_webapp(monkeypatch, tmp_path, behind_tls_proxy=True)
+    assert webapp_module.app.config["SESSION_COOKIE_SECURE"] is True
+
+
+def test_proxy_fix_not_applied_by_default(webapp_module, client):
+    """Without opting in, a spoofed X-Forwarded-For must not change what
+    the app sees as the client's IP - otherwise a client could pick any
+    IP it likes and dodge the per-IP login throttle entirely."""
+    resp = client.post(
+        "/login",
+        data={"password": "wrong"},
+        headers={"X-Forwarded-For": "203.0.113.9"},
+        environ_overrides={"REMOTE_ADDR": "10.0.0.5"},
+    )
+    assert resp.status_code == 200
+    assert "10.0.0.5" in webapp_module._login_attempts
+    assert "203.0.113.9" not in webapp_module._login_attempts
+
+
+def test_proxy_fix_applied_when_behind_tls_proxy(tmp_path, monkeypatch):
+    webapp_module = _fresh_webapp(monkeypatch, tmp_path, behind_tls_proxy=True)
+    webapp_module.app.config["TESTING"] = True
+    with webapp_module.app.test_client() as c:
+        resp = c.post(
+            "/login",
+            data={"password": "wrong"},
+            headers={"X-Forwarded-For": "203.0.113.9"},
+            environ_overrides={"REMOTE_ADDR": "127.0.0.1"},  # the trusted proxy hop
+        )
+    assert resp.status_code == 200
+    assert "203.0.113.9" in webapp_module._login_attempts

@@ -362,6 +362,52 @@ genuinely different host) and found not exploitable - the consistent
 `Access-Control-Allow-Origin` header (so a browser refuses to complete a
 cross-site fetch with credentials) hold up under testing.
 
+### TLS / Reverse Proxy
+
+The dashboard's own listener is plain HTTP - Flask's built-in dev server
+has no TLS support, and there's no bundled WSGI server (Gunicorn, etc.)
+either, since a home-server dashboard this size doesn't need one. For
+anything beyond a trusted private LAN, put a TLS-terminating reverse
+proxy in front of it rather than exposing `DASHBOARD_PORT` directly to
+the internet.
+
+nginx:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name dashboard.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/dashboard.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/dashboard.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Caddy needs far less (automatic Let's Encrypt, no manual cert paths):
+
+```
+dashboard.example.com {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+Either way, once the proxy is genuinely in place, set
+`DASHBOARD_BEHIND_TLS_PROXY=true` (`.env` for Docker, `dashboard.env` for
+systemd - see below). This tells the app to trust the proxy's
+`X-Forwarded-For`/`X-Forwarded-Proto` headers for exactly one hop (via
+Werkzeug's `ProxyFix`) and marks the session cookie `Secure`. Leave it
+`false` for a bare-HTTP setup: without a real proxy in front, trusting
+those headers would let any client just claim whatever source IP it
+likes, defeating the per-IP login throttle above, and a `Secure` cookie
+would never actually get set over plain HTTP in the first place.
+
 The **Traffic Trend** panel charts packets/sec and open-alert count across
 recent runs (oldest to newest) so you can see whether current traffic or
 alert volume looks normal compared to history, not just this one run in
