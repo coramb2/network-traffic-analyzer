@@ -6,6 +6,7 @@ alerts, delete devices, or download PCAP captures.
 """
 
 import importlib
+import json
 
 import pytest
 
@@ -101,3 +102,56 @@ def test_logout_clears_session(client):
 def test_login_page_itself_does_not_require_auth(client):
     resp = client.get("/login")
     assert resp.status_code == 200
+
+
+# --- security headers -------------------------------------------------
+
+def test_security_headers_present_on_login_page(client):
+    resp = client.get("/login")
+    assert resp.headers["X-Frame-Options"] == "DENY"
+    assert resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert "frame-ancestors 'none'" in resp.headers["Content-Security-Policy"]
+
+
+def test_security_headers_present_on_api_response(client):
+    client.post("/login", data={"password": "s3cret"})
+    resp = client.get("/api/runs")
+    assert resp.headers["X-Frame-Options"] == "DENY"
+    assert resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert "Content-Security-Policy" in resp.headers
+
+
+def test_csp_skipped_for_per_run_html_report(webapp_module, client, tmp_path):
+    """The per-run report loads Chart.js from a CDN (with an SRI hash) -
+    a blanket script-src 'self' CSP here would silently break its chart."""
+    client.post("/login", data={"password": "s3cret"})
+    reports_root = tmp_path / "reports"
+    run_dir = reports_root / "20260101T000000Z"
+    run_dir.mkdir()
+    (run_dir / "traffic_report.html").write_text("<html>report</html>")
+
+    resp = client.get("/api/runs/20260101T000000Z/report.html")
+    assert resp.status_code == 200
+    assert "Content-Security-Policy" not in resp.headers
+    # Frame/MIME protections still apply even here.
+    assert resp.headers["X-Frame-Options"] == "DENY"
+
+
+# --- request size limit -------------------------------------------------
+
+def test_oversized_request_body_rejected(client):
+    client.post("/login", data={"password": "s3cret"})
+    huge_body = json.dumps({"ip": "192.168.1.50", "name": "A" * 200_000})
+    resp = client.post("/api/devices", data=huge_body, content_type="application/json")
+    assert resp.status_code == 413
+
+
+# --- login-attempt tracking dict is bounded -----------------------------
+
+def test_login_attempt_tracking_dict_is_bounded(webapp_module):
+    webapp_module._last_login_attempt.clear()
+    cap = webapp_module._LOGIN_ATTEMPT_MAX_TRACKED
+    for i in range(cap + 50):
+        webapp_module._evict_oldest_login_attempt_if_full(f"10.0.{i // 256}.{i % 256}")
+        webapp_module._last_login_attempt[f"10.0.{i // 256}.{i % 256}"] = i
+    assert len(webapp_module._last_login_attempt) <= cap

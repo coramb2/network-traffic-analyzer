@@ -74,13 +74,29 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+    # Every request body this app handles is a small JSON object (a device
+    # name, a rule, a resolution note) - a few hundred bytes at most. 64KB
+    # is generous headroom over that while still refusing multi-MB bodies
+    # (Flask returns 413 automatically for anything over this).
+    MAX_CONTENT_LENGTH=64 * 1024,
 )
 
 # Minimal brute-force throttle: at most one login attempt per second per
 # client IP. Not a substitute for a real rate limiter, but cheap and stops
 # naive automated guessing without adding a dependency.
 _LOGIN_THROTTLE_SECONDS = 1
+# Bounds memory even if an attacker cycles through many distinct source
+# IPs (e.g. a wide IPv6 range) - without a cap this dict would otherwise
+# grow by one entry per never-before-seen IP forever.
+_LOGIN_ATTEMPT_MAX_TRACKED = 10000
 _last_login_attempt = {}
+
+
+def _evict_oldest_login_attempt_if_full(client_ip):
+    """Drop the oldest-tracked client IP before adding a new one past the
+    cap (same eviction approach as detector.py's per-IP tracking dicts)."""
+    if client_ip not in _last_login_attempt and len(_last_login_attempt) >= _LOGIN_ATTEMPT_MAX_TRACKED:
+        del _last_login_attempt[next(iter(_last_login_attempt))]
 
 
 def _safe_next_path(path):
@@ -104,6 +120,33 @@ def _require_login():
     return redirect(url_for("login", next=request.path))
 
 
+@app.after_request
+def _security_headers(response):
+    # Belt-and-braces against embedding this app in another page's iframe
+    # (clickjacking/UI-redress) - frame-ancestors below is the modern
+    # equivalent, kept alongside for browsers that only honor this header.
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+    # Skipped for the per-run HTML report: it loads Chart.js from a CDN
+    # (with an SRI hash pin) rather than this app's own vendored copy, and
+    # is meant to keep working if downloaded and opened standalone outside
+    # the dashboard. Every other response is this app's own pages/API,
+    # which never need a third-party origin for anything.
+    if request.endpoint != "api_run_html":
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
+        )
+    return response
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None
@@ -112,6 +155,7 @@ def login():
         wait = _LOGIN_THROTTLE_SECONDS - (time.monotonic() - _last_login_attempt.get(client_ip, 0))
         if wait > 0:
             time.sleep(wait)
+        _evict_oldest_login_attempt_if_full(client_ip)
         _last_login_attempt[client_ip] = time.monotonic()
 
         if hmac.compare_digest(request.form.get("password", ""), DASHBOARD_PASSWORD):
