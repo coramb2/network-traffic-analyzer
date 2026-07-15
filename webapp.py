@@ -397,7 +397,8 @@ def api_devices():
     ip = body.get("ip", "")
     if not device_names.is_valid_ip(ip):
         abort(400)
-    names = device_names.set_name(ip, body.get("name", ""))
+    mac = (body.get("mac") or "").strip() or None
+    names = device_names.set_name(ip, body.get("name", ""), mac=mac)
     return jsonify(names)
 
 
@@ -405,7 +406,8 @@ def api_devices():
 def api_device_delete(ip):
     if not device_names.is_valid_ip(ip):
         abort(400)
-    device_names.remove_name(ip)
+    mac = (request.args.get("mac") or "").strip() or None
+    device_names.remove_name(ip, mac=mac)
     return "", 204
 
 
@@ -418,6 +420,7 @@ def api_seen_devices():
     across the scanned runs so the busiest devices sort to the top.
     """
     names = device_names.load_names()
+    mac_names = device_names.load_mac_names()
     seen = {}  # ip -> {"packet_count": int, "hostname": str|None, "geoip": dict|None, "mac_info": dict|None}
 
     for run_id in list_run_ids()[:SEEN_DEVICES_RUN_LIMIT]:
@@ -451,7 +454,11 @@ def api_seen_devices():
             "hostname": v["hostname"],
             "geoip": v["geoip"],
             "mac_info": v["mac_info"],
-            "name": names.get(ip),
+            # Prefers the MAC-keyed name (survives this IP being reassigned
+            # to a different device later) over the IP-keyed one.
+            "name": device_names.resolve_name(
+                ip, (v["mac_info"] or {}).get("mac"), names=names, mac_names=mac_names
+            ),
         }
         for ip, v in seen.items()
     ]
@@ -470,6 +477,7 @@ def api_device_trend():
     """
     run_ids = list(reversed(list_run_ids()[:DEVICE_TREND_RUN_LIMIT]))  # oldest -> newest
     names = device_names.load_names()
+    mac_names = device_names.load_mac_names()
 
     runs = []
     per_run_top_ips = []
@@ -490,8 +498,10 @@ def api_device_trend():
         for ip, count in top_ips.items():
             totals[ip] += count
             if ip not in labels_by_ip:
+                mac = (mac_info.get(ip) or {}).get("mac")
                 vendor = (mac_info.get(ip) or {}).get("vendor")
-                labels_by_ip[ip] = names.get(ip) or hostnames.get(ip) or vendor or ip
+                resolved_name = device_names.resolve_name(ip, mac, names=names, mac_names=mac_names)
+                labels_by_ip[ip] = resolved_name or hostnames.get(ip) or vendor or ip
 
     top_devices = [ip for ip, _ in totals.most_common(DEVICE_TREND_TOP_N)]
 
