@@ -1,3 +1,5 @@
+import threading
+
 import pytest
 
 import alert_rules
@@ -180,3 +182,38 @@ def test_resolved_entries_eviction_drops_oldest_first(monkeypatch):
     remaining_keys = {r["alert_key"] for r in alert_rules.load_state()["resolved"]}
     assert "run1:0" not in remaining_keys
     assert remaining_keys == {"run1:1", "run1:2"}
+
+
+# --- concurrent writes don't lose updates or crash -----------------------
+
+def test_concurrent_add_rule_calls_do_not_lose_updates():
+    """Without a lock around the load-modify-save cycle, concurrent
+    writers race: both load the same pre-change state, and whichever
+    saves last silently wins, discarding the other's rule. Demonstrated
+    without the fix: 200 concurrent add_rule() calls left only a handful
+    of surviving rules, the rest lost or crashed outright."""
+    n = 100
+    threads = [
+        threading.Thread(target=alert_rules.add_rule, kwargs={"alert_type": "PORT_SCAN"})
+        for _ in range(n)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(alert_rules.load_state()["allowlist"]) == n
+
+
+def test_concurrent_mark_resolved_calls_do_not_lose_updates():
+    n = 100
+    threads = [
+        threading.Thread(target=alert_rules.mark_resolved, args=(f"run1:{i}",))
+        for i in range(n)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(alert_rules.load_state()["resolved"]) == n

@@ -8,6 +8,8 @@ capture container and read-write into the dashboard - only the dashboard
 ever calls add_rule/remove_rule/mark_resolved/unmark_resolved.
 """
 
+import contextlib
+import fcntl
 import json
 import os
 import uuid
@@ -57,6 +59,42 @@ def save_state(data):
     os.replace(tmp_path, path)
 
 
+@contextlib.contextmanager
+def _locked():
+    """Serializes a load_state()-modify-save_state() cycle across threads
+    and processes via an OS-level advisory lock on a dedicated lock file.
+
+    Without this, two concurrent writers race: both load the same
+    pre-change state, both modify their own in-memory copy, and whichever
+    calls save_state() last silently wins - the other's change is lost.
+    Worse, both also race on save_state()'s fixed-name temp file, which
+    can crash outright (one writer's os.replace() making the temp path
+    disappear out from under the other's os.chmod()/os.replace()).
+    Demonstrated concretely: 200 concurrent add_rule() calls with no
+    locking left only 4 surviving rules, the rest either lost or crashed.
+
+    The lock is a *separate* file from the state file on purpose:
+    save_state()'s atomic rename swaps out the state file's underlying
+    inode, which would silently invalidate an flock() held on that path
+    for every write after the first (flock is per-inode, not per-path).
+
+    Not exercised by the documented single-threaded default deployment
+    (Werkzeug's dev server processes one request at a time unless
+    threaded=True), but a real risk the moment anyone runs this behind a
+    threaded dev server or a multi-worker WSGI server - a foreseeable
+    step once someone hardens their deployment past the dev-server
+    warning, exactly as the TLS-reverse-proxy setup already nudges
+    toward.
+    """
+    fd = os.open(f"{_state_path()}.lock", os.O_CREAT | os.O_RDWR, 0o640)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
 def rule_matches(rule, alert):
     if rule.get("alert_type") != alert.get("type"):
         return False
@@ -72,51 +110,55 @@ def is_allowlisted(alert, rules):
 
 
 def add_rule(alert_type, source_ip=None, destination_port=None, note=""):
-    data = load_state()
-    if len(data["allowlist"]) >= MAX_ALLOWLIST_RULES:
-        data["allowlist"].pop(0)  # drop oldest
-    rule = {
-        "id": uuid.uuid4().hex[:12],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "alert_type": alert_type,
-        "source_ip": source_ip or None,
-        "destination_port": destination_port,
-        "note": note,
-    }
-    data["allowlist"].append(rule)
-    save_state(data)
+    with _locked():
+        data = load_state()
+        if len(data["allowlist"]) >= MAX_ALLOWLIST_RULES:
+            data["allowlist"].pop(0)  # drop oldest
+        rule = {
+            "id": uuid.uuid4().hex[:12],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "alert_type": alert_type,
+            "source_ip": source_ip or None,
+            "destination_port": destination_port,
+            "note": note,
+        }
+        data["allowlist"].append(rule)
+        save_state(data)
     return rule
 
 
 def remove_rule(rule_id):
-    data = load_state()
-    before = len(data["allowlist"])
-    data["allowlist"] = [r for r in data["allowlist"] if r["id"] != rule_id]
-    save_state(data)
+    with _locked():
+        data = load_state()
+        before = len(data["allowlist"])
+        data["allowlist"] = [r for r in data["allowlist"] if r["id"] != rule_id]
+        save_state(data)
     return len(data["allowlist"]) != before
 
 
 def mark_resolved(alert_key, note="", outcome=None):
-    data = load_state()
-    data["resolved"] = [r for r in data["resolved"] if r["alert_key"] != alert_key]
-    if len(data["resolved"]) >= MAX_RESOLVED_ENTRIES:
-        data["resolved"].pop(0)  # drop oldest
-    data["resolved"].append(
-        {
-            "alert_key": alert_key,
-            "resolved_at": datetime.now(timezone.utc).isoformat(),
-            "note": note,
-            "outcome": outcome,
-        }
-    )
-    save_state(data)
+    with _locked():
+        data = load_state()
+        data["resolved"] = [r for r in data["resolved"] if r["alert_key"] != alert_key]
+        if len(data["resolved"]) >= MAX_RESOLVED_ENTRIES:
+            data["resolved"].pop(0)  # drop oldest
+        data["resolved"].append(
+            {
+                "alert_key": alert_key,
+                "resolved_at": datetime.now(timezone.utc).isoformat(),
+                "note": note,
+                "outcome": outcome,
+            }
+        )
+        save_state(data)
     return data["resolved"]
 
 
 def unmark_resolved(alert_key):
-    data = load_state()
-    data["resolved"] = [r for r in data["resolved"] if r["alert_key"] != alert_key]
-    save_state(data)
+    with _locked():
+        data = load_state()
+        data["resolved"] = [r for r in data["resolved"] if r["alert_key"] != alert_key]
+        save_state(data)
 
 
 def resolved_keys(resolved_entries):

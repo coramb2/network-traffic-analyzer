@@ -373,6 +373,20 @@ the consistent `escapeHtml()` discipline in the frontend and the lack
 of any `Access-Control-Allow-Origin` header (so a browser refuses to
 complete a cross-site fetch with credentials) hold up under testing.
 
+**Concurrency:** `alert_state.json`'s and `device_names.json`'s
+read-modify-write cycles (`alert_rules.py`, `device_names.py`) are each
+serialized with an OS-level file lock, closing a lost-update race that
+was concretely reproducible without it - 200 concurrent rule-adds with
+no locking left only a handful of surviving rules, the rest either
+silently lost (two writers racing on stale in-memory state, last save
+wins) or crashed outright (both racing to replace the same fixed-name
+temp file). Not triggered by the documented single-threaded default
+`app.run()` (Werkzeug's dev server processes one request at a time
+unless `threaded=True`), but a real risk the moment this runs behind a
+threaded dev server or a multi-worker WSGI server - exactly the kind of
+change someone hardening past the "don't use the dev server in
+production" warning would make.
+
 ### TLS / Reverse Proxy
 
 The dashboard's own listener is plain HTTP - Flask's built-in dev server
