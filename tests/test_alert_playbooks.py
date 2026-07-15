@@ -26,9 +26,9 @@ def test_firewall_suggestions_empty_when_no_ip_or_port():
 def test_firewall_suggestions_source_ip_only():
     suggestions = alert_playbooks.firewall_suggestions({"source_ip": "10.0.0.5"})
     labels = [s["label"] for s in suggestions]
-    assert any("ufw" in l.lower() for l in labels)
-    assert any("iptables" in l.lower() for l in labels)
-    assert any("nftables" in l.lower() for l in labels)
+    assert any("ufw" in label.lower() for label in labels)
+    assert any("iptables" in label.lower() for label in labels)
+    assert any("nftables" in label.lower() for label in labels)
     assert all("10.0.0.5" in s["command"] for s in suggestions if "block this source" in s["label"].lower())
     # No port-only or combined suggestions without a destination_port.
     assert not any("port" in s["label"].lower() and "source" not in s["label"].lower() for s in suggestions)

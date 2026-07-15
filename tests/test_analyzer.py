@@ -111,7 +111,7 @@ def test_packet_timestamp_uses_packet_capture_time_not_wall_clock():
     """Regression: using datetime.now() instead of the packet's own
     capture time badly distorted rate-based detection during fast .pcap
     replay, since every packet would look nearly simultaneous."""
-    from datetime import datetime, timezone
+    from datetime import datetime
     analyzer = PacketAnalyzer()
     pkt = tcp_packet()
     pkt.time = 1700000000.0  # 2023-11-14T22:13:20Z

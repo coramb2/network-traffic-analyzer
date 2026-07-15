@@ -4,7 +4,7 @@ Network Traffic Analyzer - Main Packet Capture Module
 Captures and analyzes network packets in real-time
 """
 
-from scapy.all import sniff, Ether, IP, TCP, UDP, ICMP, Raw
+from scapy.all import sniff, Ether, IP, TCP, UDP, ICMP
 from scapy.layers import http
 from scapy.utils import PcapWriter
 from collections import defaultdict
@@ -14,7 +14,6 @@ import os
 from rich.console import Console, Group
 from rich.table import Table
 from rich.live import Live
-from rich.layout import Layout
 from rich.panel import Panel
 import threading
 import time
@@ -114,8 +113,6 @@ class PacketAnalyzer:
     
     def generate_display_table(self):
         """Generate a rich table for live display"""
-        layout = Layout()
-        
         # Stats table
         stats_table = Table(title="Traffic Statistics", show_header=True)
         stats_table.add_column("Metric", style="cyan")
@@ -234,7 +231,7 @@ class PacketAnalyzer:
         """Start capturing packets, or replay them from an existing .pcap file
         (read_pcap) instead of a live interface - useful for offline analysis
         of a capture taken elsewhere, or for testing without root/capabilities."""
-        console.print(f"[bold cyan]Starting packet capture...[/bold cyan]")
+        console.print("[bold cyan]Starting packet capture...[/bold cyan]")
         if read_pcap:
             console.print(f"Reading from: {read_pcap}")
         else:

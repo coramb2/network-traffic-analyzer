@@ -1,0 +1,14 @@
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# Correctness-focused only, deliberately not full style enforcement (no
+# import sorting, no line-length-driven reformatting) - see the "Add a
+# linter to CI" issue for the reasoning. Pinned explicitly rather than
+# relying on ruff's own default selection, so a future ruff upgrade can't
+# silently change what this build enforces.
+select = [
+    "E9",  # syntax errors
+    "F",   # pyflakes: unused imports/variables, undefined names, etc.
+    "E7",  # statement-level issues (ambiguous variable names, bare except, etc.)
+]
