@@ -143,3 +143,40 @@ def test_resolved_keys_includes_every_entry_regardless_of_outcome():
         {"alert_key": "run1:1", "outcome": "benign"},
     ]
     assert alert_rules.resolved_keys(entries) == {"run1:0", "run1:1"}
+
+
+# --- allowlist/resolved-state growth is bounded -------------------------
+
+def test_allowlist_is_bounded(monkeypatch):
+    monkeypatch.setattr(alert_rules, "MAX_ALLOWLIST_RULES", 3)
+    for _ in range(5):
+        alert_rules.add_rule(alert_type="PORT_SCAN")
+    assert len(alert_rules.load_state()["allowlist"]) == 3
+
+
+def test_allowlist_eviction_drops_oldest_first(monkeypatch):
+    monkeypatch.setattr(alert_rules, "MAX_ALLOWLIST_RULES", 2)
+    first = alert_rules.add_rule(alert_type="PORT_SCAN", note="first")
+    alert_rules.add_rule(alert_type="PORT_SCAN", note="second")
+    alert_rules.add_rule(alert_type="PORT_SCAN", note="third")
+
+    remaining_ids = {r["id"] for r in alert_rules.load_state()["allowlist"]}
+    assert first["id"] not in remaining_ids
+
+
+def test_resolved_entries_are_bounded(monkeypatch):
+    monkeypatch.setattr(alert_rules, "MAX_RESOLVED_ENTRIES", 3)
+    for i in range(5):
+        alert_rules.mark_resolved(f"run1:{i}")
+    assert len(alert_rules.load_state()["resolved"]) == 3
+
+
+def test_resolved_entries_eviction_drops_oldest_first(monkeypatch):
+    monkeypatch.setattr(alert_rules, "MAX_RESOLVED_ENTRIES", 2)
+    alert_rules.mark_resolved("run1:0")
+    alert_rules.mark_resolved("run1:1")
+    alert_rules.mark_resolved("run1:2")
+
+    remaining_keys = {r["alert_key"] for r in alert_rules.load_state()["resolved"]}
+    assert "run1:0" not in remaining_keys
+    assert remaining_keys == {"run1:1", "run1:2"}

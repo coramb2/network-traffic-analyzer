@@ -160,6 +160,79 @@ def test_api_run_detail_reflects_resolved_alerts(app_ctx, client):
     assert alert["outcome"] == "benign"
 
 
+# --- POST .../alerts/<index>/resolve|unresolve --------------------------
+
+def test_resolve_alert_marks_it_resolved(app_ctx, client):
+    _, reports_root = app_ctx
+    alerts = [{"type": "SUSPICIOUS_PORT", "severity": "MEDIUM", "description": "x", "details": "y"}]
+    make_run(reports_root, "20260101T000000Z", alerts=alerts)
+
+    resp = client.post("/api/runs/20260101T000000Z/alerts/0/resolve", json={"outcome": "benign"})
+    assert resp.status_code == 200
+
+    detail = client.get("/api/runs/20260101T000000Z").get_json()
+    assert detail["alerts"][0]["resolved"] is True
+
+
+def test_unresolve_alert_clears_resolution(app_ctx, client):
+    _, reports_root = app_ctx
+    alerts = [{"type": "SUSPICIOUS_PORT", "severity": "MEDIUM", "description": "x", "details": "y"}]
+    make_run(reports_root, "20260101T000000Z", alerts=alerts)
+    client.post("/api/runs/20260101T000000Z/alerts/0/resolve", json={"outcome": "benign"})
+
+    resp = client.post("/api/runs/20260101T000000Z/alerts/0/unresolve")
+    assert resp.status_code == 204
+
+    detail = client.get("/api/runs/20260101T000000Z").get_json()
+    assert detail["alerts"][0]["resolved"] is False
+
+
+def test_resolve_alert_rejects_out_of_range_index(app_ctx, client):
+    """An index past the real alert count must 404, not silently record a
+    resolution for an alert that doesn't exist - otherwise an
+    authenticated client could grow alert_state.json's resolved list
+    without bound by POSTing arbitrary indices (that list is loaded in
+    full on nearly every dashboard API request)."""
+    _, reports_root = app_ctx
+    alerts = [{"type": "SUSPICIOUS_PORT", "severity": "MEDIUM", "description": "x", "details": "y"}]
+    make_run(reports_root, "20260101T000000Z", alerts=alerts)
+
+    resp = client.post("/api/runs/20260101T000000Z/alerts/1/resolve", json={"outcome": "benign"})
+    assert resp.status_code == 404
+
+    import alert_rules
+    assert alert_rules.load_state()["resolved"] == []
+
+
+def test_resolve_alert_rejects_negative_index(app_ctx, client):
+    _, reports_root = app_ctx
+    make_run(reports_root, "20260101T000000Z", alerts=[{"type": "SUSPICIOUS_PORT", "severity": "LOW"}])
+
+    resp = client.post("/api/runs/20260101T000000Z/alerts/-1/resolve")
+    assert resp.status_code == 404
+
+
+def test_resolve_alert_rejects_index_when_run_has_no_alerts(app_ctx, client):
+    _, reports_root = app_ctx
+    make_run(reports_root, "20260101T000000Z")  # no alerts at all
+
+    resp = client.post("/api/runs/20260101T000000Z/alerts/0/resolve")
+    assert resp.status_code == 404
+
+
+def test_unresolve_alert_rejects_out_of_range_index(app_ctx, client):
+    _, reports_root = app_ctx
+    make_run(reports_root, "20260101T000000Z", alerts=[{"type": "SUSPICIOUS_PORT", "severity": "LOW"}])
+
+    resp = client.post("/api/runs/20260101T000000Z/alerts/5/unresolve")
+    assert resp.status_code == 404
+
+
+def test_resolve_alert_rejects_unknown_run_id(client):
+    resp = client.post("/api/runs/20260101T000000Z/alerts/0/resolve")
+    assert resp.status_code == 404
+
+
 def test_api_live_no_data(client):
     resp = client.get("/api/live")
     assert resp.get_json()["status"] == "no_data"

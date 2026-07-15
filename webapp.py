@@ -362,6 +362,13 @@ def api_run_detail(run_id):
     )
 
 
+def alert_count(run_dir):
+    """Number of alerts recorded for a run - the valid range for an
+    alerts/<index>/resolve|unresolve call against it."""
+    alerts_data = read_json(os.path.join(run_dir, "security_alerts.json"))
+    return len(alerts_data.get("alerts", [])) if alerts_data else 0
+
+
 @app.route("/api/rules", methods=["GET", "POST"])
 def api_rules():
     if request.method == "GET":
@@ -403,7 +410,9 @@ def api_rule_delete(rule_id):
 
 @app.route("/api/runs/<run_id>/alerts/<int:index>/resolve", methods=["POST"])
 def api_alert_resolve(run_id, index):
-    safe_run_dir(run_id)  # validates run_id, 404s on bad/unknown runs
+    run_dir = safe_run_dir(run_id)  # validates run_id, 404s on bad/unknown runs
+    if not (0 <= index < alert_count(run_dir)):
+        abort(404)
     body = request.get_json(silent=True) or {}
     outcome = body.get("outcome")
     if outcome is not None and outcome not in alert_rules.OUTCOMES:
@@ -415,7 +424,9 @@ def api_alert_resolve(run_id, index):
 
 @app.route("/api/runs/<run_id>/alerts/<int:index>/unresolve", methods=["POST"])
 def api_alert_unresolve(run_id, index):
-    safe_run_dir(run_id)
+    run_dir = safe_run_dir(run_id)
+    if not (0 <= index < alert_count(run_dir)):
+        abort(404)
     alert_rules.unmark_resolved(f"{run_id}:{index}")
     return "", 204
 
