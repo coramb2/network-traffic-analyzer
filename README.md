@@ -316,6 +316,24 @@ logged out on every container restart (a fresh random key is used
 otherwise). Neither has a default - there's no factory password to leave
 unchanged.
 
+**Hardening, from an internal pentest:** every response carries
+`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and a
+`Content-Security-Policy` (skipped only for the per-run HTML report,
+which loads Chart.js from a CDN with an SRI hash rather than this app's
+vendored copy) - so the dashboard can't be embedded in another page's
+iframe for a UI-redress/clickjacking attempt. Request bodies are capped
+at 64KB (`MAX_CONTENT_LENGTH`) and a device name is capped at 100
+characters, so a single request can't bloat `device_names.json` with an
+arbitrarily large string. The per-IP login throttle's tracking dict is
+itself bounded (10,000 entries, oldest evicted first) so it can't grow
+without limit under a wide range of source IPs. Stored/reflected XSS and
+CSRF were both actively tested for (payloads planted in every
+attacker-influenceable field; real cross-site request attempts from a
+genuinely different host) and found not exploitable - the consistent
+`escapeHtml()` discipline in the frontend and the lack of any
+`Access-Control-Allow-Origin` header (so a browser refuses to complete a
+cross-site fetch with credentials) hold up under testing.
+
 The **Traffic Trend** panel charts packets/sec and open-alert count across
 recent runs (oldest to newest) so you can see whether current traffic or
 alert volume looks normal compared to history, not just this one run in

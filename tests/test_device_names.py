@@ -66,6 +66,17 @@ def test_remove_name_returns_false_when_absent():
     assert device_names.remove_name("192.168.1.99") is False
 
 
+def test_set_name_truncates_oversized_input():
+    """A friendly name is a short label, not free-form text - without a
+    cap, a single request could bloat device_names.json (read in full on
+    every load_names() call) with an arbitrarily large string."""
+    huge_name = "A" * 10_000
+    device_names.set_name("192.168.1.50", huge_name)
+    stored = device_names.load_names()["192.168.1.50"]
+    assert len(stored) == device_names.MAX_NAME_LENGTH
+    assert stored == huge_name[:device_names.MAX_NAME_LENGTH]
+
+
 def test_resolve_hostnames_empty_input_returns_empty_dict():
     assert device_names.resolve_hostnames([]) == {}
 

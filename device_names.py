@@ -19,6 +19,11 @@ import socket
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from datetime import datetime, timezone
 
+# A friendly name is a short label ("Cora's Laptop"), not free-form text -
+# capped so a request can't bloat device_names.json (every load_names()
+# call reads the whole file) with an arbitrarily large string.
+MAX_NAME_LENGTH = 100
+
 
 def _names_path():
     return os.environ.get("DEVICE_NAMES_PATH", "device_names.json")
@@ -64,7 +69,7 @@ def set_name(ip, name):
     if not is_valid_ip(ip):
         raise ValueError(f"Not a valid IP address: {ip}")
     names = load_names()
-    name = (name or "").strip()
+    name = (name or "").strip()[:MAX_NAME_LENGTH]
     if name:
         names[ip] = name
     else:
