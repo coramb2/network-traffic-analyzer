@@ -183,12 +183,21 @@ Needs a browser installed once (`playwright install chromium`); every
 other test file needs nothing beyond `requirements-dev.txt`.
 
 **CI** (`.github/workflows/ci.yml`) runs the same install + compile-check +
-lint + `pytest` on every push to `main` and every pull request targeting
-it, on `ubuntu-latest` with Python 3.11 - the badge at the top of this
-README reflects the latest run. Lint is `ruff` (`pyproject.toml`) with a
-deliberately narrow, correctness-focused rule set - unused imports/
-variables, undefined names, ambiguous variable names - not full style
-enforcement.
+lint + supply-chain scan + `pytest` on every push to `main` and every pull
+request targeting it, on `ubuntu-latest` with Python 3.11 - the badge at
+the top of this README reflects the latest run. Lint is `ruff`
+(`pyproject.toml`) with a deliberately narrow, correctness-focused rule
+set - unused imports/variables, undefined names, ambiguous variable
+names - not full style enforcement.
+
+The supply-chain scan (`check_pip_audit.py`) runs `pip-audit` against all
+three requirement files, failing CI the moment a CVE is disclosed for an
+already-pinned dependency rather than waiting on a Dependabot PR. A
+finding with no fixed version released yet can be temporarily suppressed
+via `pip_audit_ignores.toml`, but every entry there needs an `expires`
+date - once it passes, the script refuses to even run `pip-audit` until
+the suppression is re-evaluated (extended or dropped in favor of a real
+fix), so a suppression can't quietly outlive its reason.
 
 ## 🛠️ Technical Stack
 

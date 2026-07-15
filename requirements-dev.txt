@@ -5,3 +5,5 @@ ruff==0.15.21
 # Browser-driven dashboard tests (tests/test_dashboard_browser.py) - also
 # needs `playwright install --with-deps chromium` (see CI workflow).
 pytest-playwright==0.8.0
+# Supply-chain scanning gate (check_pip_audit.py) - see CI workflow.
+pip-audit==2.10.1

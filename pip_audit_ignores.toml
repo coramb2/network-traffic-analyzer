@@ -1,0 +1,13 @@
+# Temporary suppressions for pip-audit findings that have no fixed
+# version released yet upstream. Every entry must have an "expires" date -
+# check_pip_audit.py fails loudly (before even running pip-audit) once
+# that date passes, so a suppression can't quietly outlive its reason and
+# get forgotten. When the date arrives, either the dependency has a fix by
+# then (bump it, delete the entry) or it doesn't (extend the date with a
+# fresh look at whether it's still the right call).
+#
+# Example:
+# [[ignore]]
+# id = "GHSA-xxxx-xxxx-xxxx"
+# expires = "2026-08-01"
+# reason = "No fixed version released yet upstream; tracked in issue #NN."

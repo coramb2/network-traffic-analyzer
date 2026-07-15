@@ -44,5 +44,12 @@ jobs:
       - name: Lint
         run: ruff check .
 
+      # Fails the build on a disclosed CVE for an already-pinned dependency,
+      # rather than relying solely on Dependabot's passive PRs. Honors a
+      # small expiring ignore-list (pip_audit_ignores.toml) for findings
+      # with no fixed version released yet - see check_pip_audit.py.
+      - name: Supply-chain vulnerability scan
+        run: python check_pip_audit.py
+
       - name: Run tests
         run: pytest -v
