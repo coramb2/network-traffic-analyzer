@@ -350,9 +350,11 @@ vendored copy) - so the dashboard can't be embedded in another page's
 iframe for a UI-redress/clickjacking attempt. Request bodies are capped
 at 64KB (`MAX_CONTENT_LENGTH`) and a device name is capped at 100
 characters, so a single request can't bloat `device_names.json` with an
-arbitrarily large string. The per-IP login throttle's tracking dict is
-itself bounded (10,000 entries, oldest evicted first) so it can't grow
-without limit under a wide range of source IPs. Stored/reflected XSS and
+arbitrarily large string. The login throttle escalates per-IP after each
+failed attempt (1s, 2s, 4s, ... capped at 30s) rather than holding to a
+flat rate forever, and resets on a successful login; its tracking dict
+is itself bounded (10,000 entries, oldest evicted first) so it can't
+grow without limit under a wide range of source IPs. Stored/reflected XSS and
 CSRF were both actively tested for (payloads planted in every
 attacker-influenceable field; real cross-site request attempts from a
 genuinely different host) and found not exploitable - the consistent

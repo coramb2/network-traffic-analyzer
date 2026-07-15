@@ -149,9 +149,55 @@ def test_oversized_request_body_rejected(client):
 # --- login-attempt tracking dict is bounded -----------------------------
 
 def test_login_attempt_tracking_dict_is_bounded(webapp_module):
-    webapp_module._last_login_attempt.clear()
+    webapp_module._login_attempts.clear()
     cap = webapp_module._LOGIN_ATTEMPT_MAX_TRACKED
     for i in range(cap + 50):
-        webapp_module._evict_oldest_login_attempt_if_full(f"10.0.{i // 256}.{i % 256}")
-        webapp_module._last_login_attempt[f"10.0.{i // 256}.{i % 256}"] = i
-    assert len(webapp_module._last_login_attempt) <= cap
+        ip = f"10.0.{i // 256}.{i % 256}"
+        webapp_module._evict_oldest_login_attempt_if_full(ip)
+        webapp_module._login_attempts[ip] = {"failures": 0, "last_attempt": i}
+    assert len(webapp_module._login_attempts) <= cap
+
+
+# --- escalating login backoff -------------------------------------------
+
+def test_login_backoff_seconds_doubles_per_consecutive_failure(webapp_module):
+    assert webapp_module._login_backoff_seconds(0) == 1
+    assert webapp_module._login_backoff_seconds(1) == 2
+    assert webapp_module._login_backoff_seconds(2) == 4
+    assert webapp_module._login_backoff_seconds(3) == 8
+
+
+def test_login_backoff_seconds_caps_at_max(webapp_module):
+    assert webapp_module._login_backoff_seconds(10) == webapp_module._LOGIN_BACKOFF_MAX_SECONDS
+
+
+def test_failed_login_increments_failure_count(client, webapp_module):
+    client.post("/login", data={"password": "wrong"})
+    assert webapp_module._login_attempts["127.0.0.1"]["failures"] == 1
+
+    # Backdate the last attempt so the next POST doesn't actually block
+    # on the now-escalated backoff window - only the failure count (and
+    # that it keeps climbing) is under test here.
+    webapp_module._login_attempts["127.0.0.1"]["last_attempt"] -= 100
+    client.post("/login", data={"password": "wrong"})
+    assert webapp_module._login_attempts["127.0.0.1"]["failures"] == 2
+
+
+def test_successful_login_resets_failure_count(client, webapp_module):
+    client.post("/login", data={"password": "wrong"})
+    assert "127.0.0.1" in webapp_module._login_attempts
+
+    webapp_module._login_attempts["127.0.0.1"]["last_attempt"] -= 100
+    client.post("/login", data={"password": "s3cret"})
+    assert "127.0.0.1" not in webapp_module._login_attempts
+
+
+def test_login_sleeps_for_escalated_backoff_after_a_failure(client, webapp_module, monkeypatch):
+    client.post("/login", data={"password": "wrong"})  # first attempt: no prior entry, no sleep
+
+    slept = []
+    monkeypatch.setattr(webapp_module.time, "sleep", lambda seconds: slept.append(seconds))
+    client.post("/login", data={"password": "wrong"})
+
+    assert slept
+    assert slept[0] == pytest.approx(2, abs=0.5)
